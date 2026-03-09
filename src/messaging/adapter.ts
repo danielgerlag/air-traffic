@@ -8,7 +8,6 @@ import type {
   PermissionRequest,
   PermissionDecision,
   MachineStatus,
-  IncomingCommand,
   MessageHandler,
   CommandHandler,
 } from './types.js';
@@ -18,7 +17,7 @@ export abstract class BaseMessagingAdapter implements MessagingAdapter {
 
   protected messageHandlers: MessageHandler[] = [];
   protected commandHandlers: CommandHandler[] = [];
-  protected broadcastHandlers: CommandHandler[] = [];
+
 
   // Lifecycle
   abstract connect(): Promise<void>;
@@ -56,9 +55,6 @@ export abstract class BaseMessagingAdapter implements MessagingAdapter {
   abstract registerMachine(status: MachineStatus): Promise<void>;
   abstract getRegisteredMachines(): Promise<MachineStatus[]>;
 
-  // Cross-machine forwarding
-  abstract forwardCommand(cmd: IncomingCommand): Promise<void>;
-
   // Event registration
   onMessage(handler: MessageHandler): void {
     this.messageHandlers.push(handler);
@@ -66,10 +62,6 @@ export abstract class BaseMessagingAdapter implements MessagingAdapter {
 
   onCommand(handler: CommandHandler): void {
     this.commandHandlers.push(handler);
-  }
-
-  onBroadcast(handler: CommandHandler): void {
-    this.broadcastHandlers.push(handler);
   }
 
   // Dispatch helpers for subclasses
@@ -81,12 +73,6 @@ export abstract class BaseMessagingAdapter implements MessagingAdapter {
 
   protected async dispatchCommand(cmd: Parameters<CommandHandler>[0]): Promise<void> {
     for (const handler of this.commandHandlers) {
-      await handler(cmd);
-    }
-  }
-
-  protected async dispatchBroadcast(cmd: Parameters<CommandHandler>[0]): Promise<void> {
-    for (const handler of this.broadcastHandlers) {
       await handler(cmd);
     }
   }

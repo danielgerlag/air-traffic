@@ -39,8 +39,6 @@ export interface IncomingMessage {
 
 // Parsed command from control or project channel
 export interface IncomingCommand {
-  type: 'targeted' | 'broadcast';
-  targetMachine?: string;    // Only set for 'targeted' commands
   command: string;           // The command name (e.g., 'create', 'list', 'status')
   args: string[];            // Remaining arguments
   rawText: string;           // Original message text
@@ -130,11 +128,7 @@ export interface MessagingAdapter {
   registerMachine(status: MachineStatus): Promise<void>;
   getRegisteredMachines(): Promise<MachineStatus[]>;
 
-  // Cross-machine forwarding
-  forwardCommand(cmd: IncomingCommand): Promise<void>;
-
   // Events (machine-filtered)
   onMessage(handler: MessageHandler): void;
   onCommand(handler: CommandHandler): void;
-  onBroadcast(handler: CommandHandler): void;
 }

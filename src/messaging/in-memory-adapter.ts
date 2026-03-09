@@ -194,10 +194,6 @@ export class InMemoryMessagingAdapter extends BaseMessagingAdapter {
     return [...this.registeredMachines.values()];
   }
 
-  async forwardCommand(_cmd: IncomingCommand): Promise<void> {
-    // No-op — single machine, no forwarding needed
-  }
-
   wasPresenceReported(): boolean {
     return this.presenceReported;
   }

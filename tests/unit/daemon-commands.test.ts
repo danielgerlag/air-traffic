@@ -91,11 +91,9 @@ function makeCommand(
   }> = {},
 ) {
   return {
-    type: 'targeted' as const,
-    targetMachine: 'test-machine',
     command,
     args,
-    rawText: `test-machine: ${command} ${args.join(' ')}`.trim(),
+    rawText: `${command} ${args.join(' ')}`.trim(),
     channelId: overrides.channelId ?? 'C-control',
     channelName: overrides.channelName ?? 'air-traffic-control',
     userId: overrides.userId ?? 'U-1',

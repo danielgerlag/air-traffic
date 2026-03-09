@@ -179,11 +179,9 @@ describe('InMemoryMessagingAdapter', () => {
       adapter.onCommand((cmd) => { received.push(cmd.command); });
 
       await adapter.simulateIncomingCommand({
-        type: 'targeted',
-        targetMachine: 'test-machine',
         command: 'create',
         args: ['my-app'],
-        rawText: 'test-machine: create my-app',
+        rawText: 'create my-app',
         channelId: 'C-control',
         channelName: 'air-traffic-control',
         userId: 'U-1',

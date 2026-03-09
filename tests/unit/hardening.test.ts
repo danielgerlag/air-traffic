@@ -157,11 +157,9 @@ describe('Hardening', () => {
     it('posts an error message when a create command has an invalid name', async () => {
       // "INVALID" is uppercase → ProjectManager.validateProjectName rejects it
       await adapter.simulateIncomingCommand({
-        type: 'targeted',
-        targetMachine: 'test-machine',
         command: 'create',
         args: ['INVALID_NAME'],
-        rawText: 'test-machine: create INVALID_NAME',
+        rawText: 'create INVALID_NAME',
         channelId: 'C-control',
         channelName: 'air-traffic-control',
         userId: 'U-1',
@@ -176,11 +174,9 @@ describe('Hardening', () => {
     it('continues processing commands after a failure', async () => {
       // First command: invalid → error
       await adapter.simulateIncomingCommand({
-        type: 'targeted',
-        targetMachine: 'test-machine',
         command: 'create',
         args: ['BAD!'],
-        rawText: 'test-machine: create BAD!',
+        rawText: 'create BAD!',
         channelId: 'C-control',
         channelName: 'air-traffic-control',
         userId: 'U-1',
@@ -192,11 +188,9 @@ describe('Hardening', () => {
 
       // Second command: valid → should succeed
       await adapter.simulateIncomingCommand({
-        type: 'targeted',
-        targetMachine: 'test-machine',
         command: 'create',
         args: ['good-project'],
-        rawText: 'test-machine: create good-project',
+        rawText: 'create good-project',
         channelId: 'C-control',
         channelName: 'air-traffic-control',
         userId: 'U-2',
@@ -210,11 +204,9 @@ describe('Hardening', () => {
 
     it('posts an error when deleting a nonexistent project', async () => {
       await adapter.simulateIncomingCommand({
-        type: 'targeted',
-        targetMachine: 'test-machine',
         command: 'delete',
         args: ['no-such-project'],
-        rawText: 'test-machine: delete no-such-project',
+        rawText: 'delete no-such-project',
         channelId: 'C-control',
         channelName: 'air-traffic-control',
         userId: 'U-1',
@@ -226,9 +218,8 @@ describe('Hardening', () => {
       expect(last!.content.text).toMatch(/Error/i);
     });
 
-    it('handles broadcast commands without crashing', async () => {
+    it('handles status command without crashing', async () => {
       await adapter.simulateIncomingCommand({
-        type: 'broadcast',
         command: 'status',
         args: [],
         rawText: 'status',
@@ -272,11 +263,9 @@ describe('Hardening', () => {
     it('removes orchestrator session when a project is deleted', async () => {
       // Create a project
       await adapter.simulateIncomingCommand({
-        type: 'targeted',
-        targetMachine: 'test-machine',
         command: 'create',
         args: ['my-app'],
-        rawText: 'test-machine: create my-app',
+        rawText: 'create my-app',
         channelId: 'C-control',
         channelName: 'air-traffic-control',
         userId: 'U-1',
@@ -288,11 +277,9 @@ describe('Hardening', () => {
 
       // Delete the project
       await adapter.simulateIncomingCommand({
-        type: 'targeted',
-        targetMachine: 'test-machine',
         command: 'delete',
         args: ['my-app'],
-        rawText: 'test-machine: delete my-app',
+        rawText: 'delete my-app',
         channelId: 'C-control',
         channelName: 'air-traffic-control',
         userId: 'U-1',
@@ -309,11 +296,9 @@ describe('Hardening', () => {
     it('create → delete → re-create works without errors', async () => {
       // Create
       await adapter.simulateIncomingCommand({
-        type: 'targeted',
-        targetMachine: 'test-machine',
         command: 'create',
         args: ['cycle-test'],
-        rawText: 'test-machine: create cycle-test',
+        rawText: 'create cycle-test',
         channelId: 'C-control',
         channelName: 'air-traffic-control',
         userId: 'U-1',
@@ -323,11 +308,9 @@ describe('Hardening', () => {
 
       // Delete
       await adapter.simulateIncomingCommand({
-        type: 'targeted',
-        targetMachine: 'test-machine',
         command: 'delete',
         args: ['cycle-test'],
-        rawText: 'test-machine: delete cycle-test',
+        rawText: 'delete cycle-test',
         channelId: 'C-control',
         channelName: 'air-traffic-control',
         userId: 'U-1',
@@ -337,11 +320,9 @@ describe('Hardening', () => {
 
       // Re-create
       await adapter.simulateIncomingCommand({
-        type: 'targeted',
-        targetMachine: 'test-machine',
         command: 'create',
         args: ['cycle-test'],
-        rawText: 'test-machine: create cycle-test',
+        rawText: 'create cycle-test',
         channelId: 'C-control',
         channelName: 'air-traffic-control',
         userId: 'U-1',

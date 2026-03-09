@@ -420,10 +420,6 @@ export class SlackAdapter extends BaseMessagingAdapter {
     }
   }
 
-  async forwardCommand(_cmd: IncomingCommand): Promise<void> {
-    // No-op — cross-machine forwarding removed
-  }
-
   // --- Private helpers ---
 
   private get client() {
@@ -491,15 +487,26 @@ export class SlackAdapter extends BaseMessagingAdapter {
 
         if (isDm) {
           log.debug('Handling DM', { channel: msg.channel, text: msg.text?.slice(0, 50) });
-          // Welcome message on first contact
-          if (!this.seenDmUsers.has(msg.user)) {
-            this.seenDmUsers.add(msg.user);
-            await this.sendMessage(msg.channel, formatWelcome(this.machineName));
-          }
 
           // Check for thread replies to pending questions first
           if (msg.thread_ts) {
             this.handlePossibleQuestionReply(incoming);
+          }
+
+          // Strip ! prefix in DMs — users will try !join, !status etc.
+          if (incoming.text.startsWith('!')) {
+            incoming.text = incoming.text.slice(1);
+          }
+
+          // Welcome message on first contact (skip if user typed a command — they know what they're doing)
+          if (!this.seenDmUsers.has(msg.user)) {
+            this.seenDmUsers.add(msg.user);
+            const firstWord = incoming.text.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
+            const isCommand = parseControlChannelMessage(incoming.text) !== null || classifyIntent(incoming.text) !== null;
+            if (!isCommand) {
+              await this.sendMessage(msg.channel, formatWelcome(this.machineName));
+              await this.sendMessage(msg.channel, formatMenu(this.machineName));
+            }
           }
 
           await this.handleControlMessage(incoming);
@@ -615,7 +622,6 @@ export class SlackAdapter extends BaseMessagingAdapter {
       if (!channelId || !userId) return;
 
       const cmd: IncomingCommand = {
-        type: 'targeted',
         command: act.value,
         args: [],
         rawText: act.value,
@@ -661,7 +667,6 @@ export class SlackAdapter extends BaseMessagingAdapter {
     const parsed = parseControlChannelMessage(msg.text);
     if (parsed) {
       const cmd: IncomingCommand = {
-        type: 'targeted',
         command: parsed.command,
         args: parsed.args,
         rawText: msg.text,
@@ -679,7 +684,6 @@ export class SlackAdapter extends BaseMessagingAdapter {
     const intent = classifyIntent(msg.text);
     if (intent) {
       const cmd: IncomingCommand = {
-        type: 'targeted',
         command: intent.command,
         args: intent.args,
         rawText: msg.text,
@@ -703,8 +707,6 @@ export class SlackAdapter extends BaseMessagingAdapter {
     const parsed = parseProjectChannelMessage(msg.text);
     if (parsed) {
       const cmd: IncomingCommand = {
-        type: 'targeted',
-        targetMachine: this.machineName,
         command: parsed.command,
         args: parsed.args,
         rawText: msg.text,

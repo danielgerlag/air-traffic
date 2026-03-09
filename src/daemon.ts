@@ -599,7 +599,7 @@ export class AirTrafficDaemon {
     });
 
     await this.adapter.sendMessage(channelId, {
-      text: `📋 *Copilot Sessions* (${sessions.length}):\n${lines.join('\n')}\n\n_Use \`/atc join <session-id>\` to join one._`,
+      text: `📋 *Copilot Sessions* (${sessions.length}):\n${lines.join('\n')}\n\n_Use \`join <session-id>\` to join one._`,
     });
   }
 
@@ -665,7 +665,7 @@ export class AirTrafficDaemon {
 
     if (matches.length === 0) {
       await this.adapter.sendMessage(msg.channelId, {
-        text: `❌ No session found matching \`${sessionIdPrefix}\`. Use \`/atc sessions\` to list.`,
+        text: `❌ No session found matching \`${sessionIdPrefix}\`. Use \`sessions\` to list.`,
       });
       return;
     }
@@ -822,32 +822,15 @@ export class AirTrafficDaemon {
   // --- Status helpers ---
 
   private async postMachineStatus(channelId: string): Promise<void> {
-    const machines = await this.adapter.getRegisteredMachines();
-
-    if (machines.length === 0) {
-      // Fallback: show just this machine
-      const status = {
-        machineName: this.config.airTraffic.machineName,
-        online: true,
-        activeSessions: this.orchestrator.getActiveSessionCount(),
-        projects: this.orchestrator.getActiveProjectNames(),
-        lastSeen: new Date(),
-      };
-      const content = formatMachineStatus(this.config.airTraffic.machineName, status);
-      await this.adapter.sendMessage(channelId, content);
-      return;
-    }
-
-    const lines = machines.map((m) => {
-      const icon = m.online ? '🟢' : '🔴';
-      const state = m.online ? 'online' : `offline (last seen ${m.lastSeen.toISOString()})`;
-      const projects = m.projects.length > 0 ? m.projects.join(', ') : 'none';
-      return `${icon} *${m.machineName}* — ${state}\n     Sessions: ${m.activeSessions} · Projects: ${projects}`;
-    });
-
-    await this.adapter.sendMessage(channelId, {
-      text: `🖥️ *Registered machines:*\n\n${lines.join('\n\n')}`,
-    });
+    const status = {
+      machineName: this.config.airTraffic.machineName,
+      online: true,
+      activeSessions: this.orchestrator.getActiveSessionCount(),
+      projects: this.orchestrator.getActiveProjectNames(),
+      lastSeen: new Date(),
+    };
+    const content = formatMachineStatus(this.config.airTraffic.machineName, status);
+    await this.adapter.sendMessage(channelId, content);
   }
 
   private async postAvailableModels(channelId: string): Promise<void> {

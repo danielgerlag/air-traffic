@@ -7,139 +7,91 @@ import {
 } from '../../../src/messaging/slack/commands.js';
 
 describe('parseControlChannelMessage', () => {
-  it('parses targeted create command', () => {
-    const result = parseControlChannelMessage('desktop: create my-app');
+  it('parses create command', () => {
+    const result = parseControlChannelMessage('create my-app');
     expect(result).toEqual({
-      type: 'targeted',
-      targetMachine: 'desktop',
       command: 'create',
       args: ['my-app'],
     });
   });
 
-  it('parses targeted create with --from arg', () => {
+  it('parses create with --from arg', () => {
     const result = parseControlChannelMessage(
-      'desktop: create my-app --from https://github.com/user/repo',
+      'create my-app --from https://github.com/user/repo',
     );
     expect(result).toEqual({
-      type: 'targeted',
-      targetMachine: 'desktop',
       command: 'create',
       args: ['my-app', '--from', 'https://github.com/user/repo'],
     });
   });
 
-  it('parses targeted list command', () => {
-    const result = parseControlChannelMessage('desktop: list');
+  it('parses list command', () => {
+    const result = parseControlChannelMessage('list');
     expect(result).toEqual({
-      type: 'targeted',
-      targetMachine: 'desktop',
       command: 'list',
       args: [],
     });
   });
 
-  it('parses targeted config command', () => {
-    const result = parseControlChannelMessage('desktop: config my-app model gpt-5');
+  it('parses config command', () => {
+    const result = parseControlChannelMessage('config my-app model gpt-5');
     expect(result).toEqual({
-      type: 'targeted',
-      targetMachine: 'desktop',
       command: 'config',
       args: ['my-app', 'model', 'gpt-5'],
     });
   });
 
-  it('parses targeted delete command', () => {
-    const result = parseControlChannelMessage('desktop: delete my-app');
+  it('parses delete command', () => {
+    const result = parseControlChannelMessage('delete my-app');
     expect(result).toEqual({
-      type: 'targeted',
-      targetMachine: 'desktop',
       command: 'delete',
       args: ['my-app'],
     });
   });
 
-  it('parses broadcast status command', () => {
+  it('parses status command', () => {
     const result = parseControlChannelMessage('status');
     expect(result).toEqual({
-      type: 'broadcast',
       command: 'status',
       args: [],
     });
   });
 
-  it('parses broadcast machines command', () => {
-    const result = parseControlChannelMessage('machines');
-    expect(result).toEqual({
-      type: 'broadcast',
-      command: 'machines',
-      args: [],
-    });
-  });
-
-  it('parses models as broadcast command', () => {
+  it('parses models command', () => {
     const result = parseControlChannelMessage('models');
     expect(result).toEqual({
-      type: 'broadcast',
       command: 'models',
       args: [],
     });
   });
 
-  // --- New commands added for sessions/join/help ---
-
-  it('parses targeted sessions command', () => {
-    const result = parseControlChannelMessage('desktop: sessions');
-    expect(result).toEqual({
-      type: 'targeted',
-      targetMachine: 'desktop',
-      command: 'sessions',
-      args: [],
-    });
-  });
-
-  it('parses sessions as broadcast command', () => {
+  it('parses sessions command', () => {
     const result = parseControlChannelMessage('sessions');
     expect(result).toEqual({
-      type: 'broadcast',
       command: 'sessions',
       args: [],
     });
   });
 
-  it('parses targeted join command with session ID', () => {
-    const result = parseControlChannelMessage('desktop: join abc12345');
+  it('parses join command with session ID', () => {
+    const result = parseControlChannelMessage('join abc12345');
     expect(result).toEqual({
-      type: 'targeted',
-      targetMachine: 'desktop',
       command: 'join',
       args: ['abc12345'],
     });
   });
 
-  it('parses join without args as broadcast', () => {
+  it('parses join without args', () => {
     const result = parseControlChannelMessage('join');
     expect(result).toEqual({
-      type: 'broadcast',
       command: 'join',
       args: [],
     });
   });
 
-  it('parses targeted help command', () => {
-    const result = parseControlChannelMessage('desktop: help');
-    expect(result).toEqual({
-      type: 'targeted',
-      targetMachine: 'desktop',
-      command: 'help',
-      args: [],
-    });
-  });
-
-  it('parses help as broadcast command', () => {
+  it('parses help command', () => {
     const result = parseControlChannelMessage('help');
     expect(result).toEqual({
-      type: 'broadcast',
       command: 'help',
       args: [],
     });
@@ -151,10 +103,6 @@ describe('parseControlChannelMessage', () => {
 
   it('returns null for unknown command', () => {
     expect(parseControlChannelMessage('hello world')).toBeNull();
-  });
-
-  it('returns null for unknown targeted command', () => {
-    expect(parseControlChannelMessage('desktop: foobar')).toBeNull();
   });
 });
 
