@@ -588,7 +588,8 @@ export class AirTrafficDaemon {
       return b.modifiedTime.getTime() - a.modifiedTime.getTime();
     });
 
-    const lines = sessions.map((s) => {
+    const display = sessions.slice(0, 20);
+    const lines = display.map((s) => {
       const age = this.formatAge(s.modifiedTime);
       const flags: string[] = [];
       if (s.managed) flags.push('🟢 managed');
@@ -601,8 +602,9 @@ export class AirTrafficDaemon {
       return `• \`${s.sessionId.slice(0, 8)}\`${name}${cwd}${branch} (${age})${flagStr}`;
     });
 
+    const overflow = sessions.length > 20 ? `\n_…and ${sessions.length - 20} more_` : '';
     await this.adapter.sendMessage(channelId, {
-      text: `📋 *Copilot Sessions* (${sessions.length}):\n${lines.join('\n')}\n\n_Use \`join <session-id>\` to join one._`,
+      text: `📋 *Copilot Sessions* (${sessions.length}):\n${lines.join('\n')}${overflow}\n\n_Use \`join <session-id>\` to join one._`,
     });
   }
 
