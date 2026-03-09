@@ -1,6 +1,6 @@
 {
   "name": "air-traffic",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -23,6 +23,13 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "files": [
+    "dist/",
+    "web/dist/",
+    "scripts/",
+    "assets/",
+    "README.md"
+  ],
   "dependencies": {
     "@github/copilot-sdk": "^0.1.32",
     "@slack/bolt": "^4.6.0",
