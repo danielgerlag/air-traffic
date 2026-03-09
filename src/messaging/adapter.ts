@@ -26,7 +26,6 @@ export abstract class BaseMessagingAdapter implements MessagingAdapter {
   // Channels
   abstract createProjectChannel(machineName: string, projectName: string): Promise<ChannelInfo>;
   abstract archiveChannel(channelId: string): Promise<void>;
-  abstract getControlChannel(): Promise<ChannelInfo>;
 
   // Messages
   abstract sendMessage(channelId: string, content: MessageContent): Promise<MessageRef>;

@@ -10,7 +10,7 @@ import { ModelRegistry } from './copilot/model-registry.js';
 import { PresenceManager } from './messaging/slack/presence.js';
 import { extractProjectName } from './messaging/slack/commands.js';
 import { parseProjectChannelMessage } from './messaging/slack/commands.js';
-import { formatControlHelp } from './messaging/slack/formatters.js';
+import { formatControlHelp, formatMachineStatus } from './messaging/slack/formatters.js';
 import { MODE_DESCRIPTIONS } from './projects/types.js';
 import type { CopilotMode } from './projects/types.js';
 import { WebServer } from './web/server.js';
@@ -818,13 +818,15 @@ export class WingmanDaemon {
   private async postMachineStatus(channelId: string): Promise<void> {
     const activeSessions = this.orchestrator.getActiveSessionCount();
     const projects = this.orchestrator.getActiveProjectNames();
-    await this.adapter.reportStatus({
+    const status = {
       machineName: this.config.wingman.machineName,
       online: true,
       activeSessions,
       projects,
       lastSeen: new Date(),
-    });
+    };
+    const content = formatMachineStatus(this.config.wingman.machineName, status);
+    await this.adapter.sendMessage(channelId, content);
   }
 
   private async postMachinePresence(channelId: string): Promise<void> {

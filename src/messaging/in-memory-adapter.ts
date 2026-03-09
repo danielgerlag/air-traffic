@@ -62,8 +62,6 @@ export class InMemoryMessagingAdapter extends BaseMessagingAdapter {
   private permissionDecisions: PermissionDecision[] = [];
 
   // Control channel
-  private controlChannel: ChannelInfo = { id: 'C-control', name: 'wingman-control' };
-
   constructor(machineName: string = 'test-machine') {
     super();
     this.machineName = machineName;
@@ -105,10 +103,6 @@ export class InMemoryMessagingAdapter extends BaseMessagingAdapter {
 
   async archiveChannel(channelId: string): Promise<void> {
     this.archivedChannels.push(channelId);
-  }
-
-  async getControlChannel(): Promise<ChannelInfo> {
-    return this.controlChannel;
   }
 
   // --- Messages ---

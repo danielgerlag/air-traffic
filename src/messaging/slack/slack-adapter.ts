@@ -25,7 +25,6 @@ import {
 import {
   formatPermissionRequest,
   formatQuestion,
-  formatMachineStatus,
   formatControlHelp,
   formatProjectHelp,
   formatUnknownCommand,
@@ -67,14 +66,12 @@ export interface SlackAdapterConfig {
   questionTimeoutMs?: number;
 }
 
-const CONTROL_CHANNEL_PREFIX = 'wm-';
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 export class SlackAdapter extends BaseMessagingAdapter {
   readonly machineName: string;
 
   private app: App | null = null;
-  private controlChannel: ChannelInfo | null = null;
   private botUserId: string | null = null;
 
   // Pending interaction trackers
@@ -101,7 +98,6 @@ export class SlackAdapter extends BaseMessagingAdapter {
     this.registerEventHandlers();
 
     await this.app.start();
-    this.controlChannel = await this.findOrCreateControlChannel();
 
     // Resolve bot user ID
     const authResult = await this.app.client.auth.test({ token: this.config.botToken });
@@ -126,12 +122,6 @@ export class SlackAdapter extends BaseMessagingAdapter {
 
   async archiveChannel(channelId: string): Promise<void> {
     await this.client.conversations.archive({ channel: channelId });
-  }
-
-  async getControlChannel(): Promise<ChannelInfo> {
-    if (this.controlChannel) return this.controlChannel;
-    this.controlChannel = await this.findOrCreateControlChannel();
-    return this.controlChannel;
   }
 
   // --- Messages ---
@@ -267,14 +257,23 @@ export class SlackAdapter extends BaseMessagingAdapter {
   // --- Presence ---
 
   async reportPresence(): Promise<void> {
+    // Set bot's Slack profile status to reflect availability
     const status = this.buildPresenceStatus();
-    await this.reportStatus(status);
+    const statusText = `${status.machineName} · ${status.activeSessions} active sessions`;
+    try {
+      await this.client.users.profile.set({
+        profile: JSON.stringify({
+          status_text: statusText,
+          status_emoji: ':white_check_mark:',
+        }),
+      });
+    } catch {
+      // Non-critical — presence is best-effort
+    }
   }
 
   async reportStatus(status: MachineStatus): Promise<void> {
-    const control = await this.getControlChannel();
-    const content = formatMachineStatus(this.machineName, status);
-    await this.sendMessage(control.id, content);
+    // No-op — status is reported via DM responses now
   }
 
   // --- Private helpers ---
@@ -292,33 +291,6 @@ export class SlackAdapter extends BaseMessagingAdapter {
       projects: [],
       lastSeen: new Date(),
     };
-  }
-
-  private async findOrCreateControlChannel(): Promise<ChannelInfo> {
-    const controlChannelName = `${CONTROL_CHANNEL_PREFIX}${this.machineName}-control`;
-    // Search existing channels
-    let cursor: string | undefined;
-    do {
-      const result = await this.client.conversations.list({
-        types: 'public_channel',
-        limit: 200,
-        cursor,
-      });
-      for (const ch of result.channels ?? []) {
-        if (ch.name === controlChannelName) {
-          return { id: ch.id!, name: ch.name! };
-        }
-      }
-      cursor = result.response_metadata?.next_cursor || undefined;
-    } while (cursor);
-
-    // Not found — create it
-    const result = await this.client.conversations.create({
-      name: controlChannelName,
-      is_private: false,
-    });
-    const channel = result.channel!;
-    return { id: channel.id!, name: channel.name! };
   }
 
   private registerEventHandlers(): void {
@@ -372,7 +344,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
         };
         await this.dispatchCommand(cmd);
       } else {
-        // Control channel or any other channel: parse as control command
+        // DM or any other channel: parse as control command
         const parsed = parseControlChannelMessage(text);
         if (!parsed) {
           const controlCommands = ['create', 'delete', 'list', 'config', 'status', 'models', 'sessions', 'join', 'help'];
@@ -382,8 +354,8 @@ export class SlackAdapter extends BaseMessagingAdapter {
         }
 
         const cmd: IncomingCommand = {
-          type: parsed.type,
-          targetMachine: parsed.targetMachine ?? this.machineName,
+          type: 'targeted',
+          targetMachine: this.machineName,
           command: parsed.command,
           args: parsed.args,
           rawText: text,
@@ -392,15 +364,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
           userId,
           messageId,
         };
-
-        // In per-machine control channel, treat all commands as targeted to this machine
-        if (channelId === this.controlChannel?.id) {
-          await this.dispatchCommand(cmd);
-        } else if (parsed.type === 'broadcast') {
-          await this.dispatchBroadcast(cmd);
-        } else if (parsed.type === 'targeted' && parsed.targetMachine === this.machineName) {
-          await this.dispatchCommand(cmd);
-        }
+        await this.dispatchCommand(cmd);
       }
     });
 
@@ -448,9 +412,9 @@ export class SlackAdapter extends BaseMessagingAdapter {
         this.handlePossibleQuestionReply(incoming);
       }
 
-      const isControlChannel = this.controlChannel && msg.channel === this.controlChannel.id;
+      const isDm = msg.channel.startsWith('D');
 
-      if (isControlChannel) {
+      if (isDm) {
         await this.handleControlMessage(incoming);
       } else if (isProjectChannel(channelName, this.machineName)) {
         await this.handleProjectMessage(incoming);

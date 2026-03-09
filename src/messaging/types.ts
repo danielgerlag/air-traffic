@@ -101,7 +101,6 @@ export interface MessagingAdapter {
   // Channels
   createProjectChannel(machineName: string, projectName: string): Promise<ChannelInfo>;
   archiveChannel(channelId: string): Promise<void>;
-  getControlChannel(): Promise<ChannelInfo>;
 
   // Messages
   sendMessage(channelId: string, content: MessageContent): Promise<MessageRef>;

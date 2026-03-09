@@ -35,11 +35,6 @@ describe('InMemoryMessagingAdapter', () => {
       await adapter.archiveChannel('C-123');
       expect(adapter.archivedChannels).toContain('C-123');
     });
-
-    it('should return control channel', async () => {
-      const ctrl = await adapter.getControlChannel();
-      expect(ctrl.name).toBe('wingman-control');
-    });
   });
 
   describe('messages', () => {

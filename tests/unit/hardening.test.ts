@@ -238,8 +238,9 @@ describe('Hardening', () => {
         messageId: 'msg-1',
       });
 
-      // Status reports go through reportStatus, not sentMessages
-      expect(adapter.reportedStatuses.length).toBeGreaterThanOrEqual(1);
+      // Status is now sent directly to the requesting channel
+      const statusMsg = adapter.sentMessages.find(m => m.content.text.includes('online'));
+      expect(statusMsg).toBeDefined();
     });
   });
 
