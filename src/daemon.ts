@@ -599,7 +599,7 @@ export class AirTrafficDaemon {
       const name = s.summary ? ` — ${s.summary.slice(0, 80)}` : '';
       const cwd = s.context?.cwd ? ` 📁 \`${s.context.cwd}\`` : '';
       const branch = s.context?.branch ? ` 🔀 ${s.context.branch}` : '';
-      return `• \`${s.sessionId.slice(0, 8)}\`${name}${cwd}${branch} (${age})${flagStr}`;
+      return `• \`${s.sessionId.slice(0, 12)}\`${name}${cwd}${branch} (${age})${flagStr}`;
     });
 
     const overflow = sessions.length > 20 ? `\n_…and ${sessions.length - 20} more_` : '';
@@ -617,7 +617,7 @@ export class AirTrafficDaemon {
   }
 
   /** Present a dropdown session picker when no session ID is provided. */
-  private async showSessionPicker(channelId: string, threadId: string | undefined): Promise<void> {
+  private async showSessionPicker(channelId: string, threadId: string | undefined, userId?: string): Promise<void> {
     const { allSessions } = await this.getAvailableSessions();
     const unmanaged = allSessions.filter((s) => !s.managed);
 
@@ -633,7 +633,7 @@ export class AirTrafficDaemon {
       const age = this.formatAge(s.modifiedTime);
       const name = s.summary ? ` ${s.summary.slice(0, 50)}` : '';
       const branch = s.context?.branch ? ` 🔀${s.context.branch}` : '';
-      return `${s.sessionId.slice(0, 8)} —${name}${branch} (${age})`;
+      return `${s.sessionId.slice(0, 12)} — ${name}${branch} (${age})`;
     });
 
     await this.adapter.askQuestion(channelId, threadId ?? channelId, {
@@ -641,22 +641,25 @@ export class AirTrafficDaemon {
       choices,
       allowFreeform: true,
     }).then(async (response) => {
-      // Extract session ID prefix from the chosen option
+      // Extract session ID prefix — everything before the em dash separator
       const chosen = response.answer.trim().replace(/`/g, '');
-      const prefix = chosen.split(/[\s—-]/)[0]?.trim();
+      const prefix = chosen.split('—')[0]?.trim();
       if (prefix) {
         // Re-invoke join with the selected prefix
         const fakeMsg: IncomingMessage = {
           channelId,
           channelName: '',
-          userId: '',
+          userId: userId ?? '',
           text: prefix,
           messageId: '',
           timestamp: new Date(),
         };
         await this.resolveAndJoinSession(prefix, undefined, fakeMsg);
       }
-    }).catch(() => {});
+    }).catch((err) => {
+      getLogger().error('Session picker failed', { error: err });
+      this.adapter.sendMessage(channelId, { text: `❌ Failed to join session: ${err?.message ?? err}` }).catch(() => {});
+    });
   }
 
   /** Core logic: resolve a session ID prefix, find/create the project, and join. */
@@ -766,7 +769,7 @@ export class AirTrafficDaemon {
 
     if (!rawId) {
       // No ID provided — show dropdown picker
-      await this.showSessionPicker(msg.channelId, msg.threadId);
+      await this.showSessionPicker(msg.channelId, msg.threadId, msg.userId);
       return;
     }
 
@@ -786,7 +789,7 @@ export class AirTrafficDaemon {
     };
 
     if (!rawId) {
-      await this.showSessionPicker(cmd.channelId, undefined);
+      await this.showSessionPicker(cmd.channelId, undefined, cmd.userId);
       return;
     }
 
