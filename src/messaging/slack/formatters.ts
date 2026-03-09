@@ -270,6 +270,7 @@ export function formatMenu(machineName: string): MessageContent {
           { type: 'button', text: { type: 'plain_text', text: '📦 Create Project', emoji: true }, action_id: 'menu_create', value: 'create' },
           { type: 'button', text: { type: 'plain_text', text: '📋 List Projects', emoji: true }, action_id: 'menu_list', value: 'list' },
           { type: 'button', text: { type: 'plain_text', text: '🗑️ Delete Project', emoji: true }, action_id: 'menu_delete', value: 'delete' },
+          { type: 'button', text: { type: 'plain_text', text: '⚙️ Config', emoji: true }, action_id: 'menu_config', value: 'config' },
         ],
       },
       {
@@ -277,6 +278,13 @@ export function formatMenu(machineName: string): MessageContent {
         elements: [
           { type: 'button', text: { type: 'plain_text', text: '📊 Status', emoji: true }, action_id: 'menu_status', value: 'status' },
           { type: 'button', text: { type: 'plain_text', text: '🤖 Models', emoji: true }, action_id: 'menu_models', value: 'models' },
+          { type: 'button', text: { type: 'plain_text', text: '🔗 Sessions', emoji: true }, action_id: 'menu_sessions', value: 'sessions' },
+          { type: 'button', text: { type: 'plain_text', text: '🔌 Join Session', emoji: true }, action_id: 'menu_join', value: 'join' },
+        ],
+      },
+      {
+        type: 'actions',
+        elements: [
           { type: 'button', text: { type: 'plain_text', text: '❓ Help', emoji: true }, action_id: 'menu_help', value: 'help' },
         ],
       },

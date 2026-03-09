@@ -88,6 +88,11 @@ describe('formatMenu', () => {
     expect(actionIds).toContain('menu_list');
     expect(actionIds).toContain('menu_status');
     expect(actionIds).toContain('menu_help');
+    expect(actionIds).toContain('menu_config');
+    expect(actionIds).toContain('menu_sessions');
+    expect(actionIds).toContain('menu_join');
+    expect(actionIds).toContain('menu_models');
+    expect(actionIds).toContain('menu_delete');
   });
 });
 
