@@ -101,6 +101,7 @@ export interface MessagingAdapter {
   // Channels
   createProjectChannel(machineName: string, projectName: string): Promise<ChannelInfo>;
   archiveChannel(channelId: string): Promise<void>;
+  setChannelTopic(channelId: string, topic: string): Promise<void>;
 
   // Messages
   sendMessage(channelId: string, content: MessageContent): Promise<MessageRef>;
@@ -113,7 +114,7 @@ export interface MessagingAdapter {
   askPermission(channelId: string, threadId: string, request: PermissionRequest): Promise<PermissionDecision>;
 
   // File uploads
-  sendFile(channelId: string, filePath: string, filename: string, initialComment?: string): Promise<void>;
+  sendFile(channelId: string, filePath: string, filename: string, initialComment?: string, threadId?: string): Promise<void>;
 
   // File downloads (from incoming uploads)
   downloadFile(url: string, destPath: string): Promise<void>;

@@ -1,0 +1,26 @@
+# Source (compiled output is in dist/)
+src/
+tests/
+web/src/
+web/node_modules/
+web/package.json
+web/package-lock.json
+web/tsconfig*.json
+web/vite.config.ts
+web/eslint.config.js
+web/index.html
+web/README.md
+web/.gitignore
+
+# Config & tooling
+tsconfig.json
+vitest.config.ts
+.env
+.env.example
+slack-app-manifest.yaml
+
+# Dev artifacts
+*.log
+npm-debug.log
+data/
+projects/

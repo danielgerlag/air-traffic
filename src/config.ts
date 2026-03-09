@@ -1,8 +1,12 @@
 import { config as dotenvConfig } from 'dotenv';
 import { z } from 'zod';
 import path from 'node:path';
+import os from 'node:os';
 
 dotenvConfig();
+
+const DEFAULT_DATA_DIR = path.join(os.homedir(), '.air-traffic', 'data');
+const DEFAULT_PROJECTS_DIR = path.join(os.homedir(), 'projects');
 
 const ConfigSchema = z.object({
   slack: z.object({
@@ -33,8 +37,8 @@ export function loadConfig(): AirTrafficConfig {
     },
     airTraffic: {
       machineName: process.env.ATC_MACHINE_NAME ?? '',
-      projectsDir: process.env.ATC_PROJECTS_DIR ?? path.join(process.cwd(), 'projects'),
-      dataDir: process.env.ATC_DATA_DIR ?? path.join(process.cwd(), 'data'),
+      projectsDir: process.env.ATC_PROJECTS_DIR ?? DEFAULT_PROJECTS_DIR,
+      dataDir: process.env.ATC_DATA_DIR ?? DEFAULT_DATA_DIR,
       defaultModel: process.env.ATC_DEFAULT_MODEL ?? 'claude-sonnet-4.5',
       logLevel: process.env.ATC_LOG_LEVEL ?? 'info',
       permissionTimeoutMs: Number(process.env.ATC_PERMISSION_TIMEOUT_MS) || 300_000,

@@ -124,6 +124,10 @@ export class SlackAdapter extends BaseMessagingAdapter {
     await this.client.conversations.archive({ channel: channelId });
   }
 
+  async setChannelTopic(channelId: string, topic: string): Promise<void> {
+    await this.client.conversations.setTopic({ channel: channelId, topic });
+  }
+
   // --- Messages ---
 
   async sendMessage(channelId: string, content: MessageContent): Promise<MessageRef> {
@@ -214,13 +218,14 @@ export class SlackAdapter extends BaseMessagingAdapter {
 
   // --- File uploads ---
 
-  async sendFile(channelId: string, filePath: string, filename: string, initialComment?: string): Promise<void> {
+  async sendFile(channelId: string, filePath: string, filename: string, initialComment?: string, threadId?: string): Promise<void> {
     const fileBuffer = await fs.promises.readFile(filePath);
     await this.client.filesUploadV2({
       channel_id: channelId,
       filename,
       file: fileBuffer,
       initial_comment: initialComment,
+      ...(threadId ? { thread_ts: threadId } : {}),
     });
   }
 

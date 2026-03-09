@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { loadConfig } from './config.js';
 import { createLogger } from './utils/logger.js';
 import { SlackAdapter } from './messaging/slack/slack-adapter.js';

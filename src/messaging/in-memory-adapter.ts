@@ -105,6 +105,12 @@ export class InMemoryMessagingAdapter extends BaseMessagingAdapter {
     this.archivedChannels.push(channelId);
   }
 
+  readonly channelTopics: Array<{ channelId: string; topic: string }> = [];
+
+  async setChannelTopic(channelId: string, topic: string): Promise<void> {
+    this.channelTopics.push({ channelId, topic });
+  }
+
   // --- Messages ---
 
   async sendMessage(channelId: string, content: MessageContent): Promise<MessageRef> {
@@ -148,8 +154,8 @@ export class InMemoryMessagingAdapter extends BaseMessagingAdapter {
 
   // --- File uploads ---
 
-  async sendFile(channelId: string, filePath: string, filename: string, initialComment?: string): Promise<void> {
-    this.sentFiles.push({ channelId, filePath, filename, comment: initialComment });
+  async sendFile(channelId: string, filePath: string, filename: string, initialComment?: string, threadId?: string): Promise<void> {
+    this.sentFiles.push({ channelId, filePath, filename, comment: initialComment, threadId });
   }
 
   // --- File downloads ---

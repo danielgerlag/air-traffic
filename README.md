@@ -1,5 +1,7 @@
 # Air Traffic
 
+<img src="assets/icon.svg" width="128" alt="Air Traffic icon" />
+
 > Remote GitHub Copilot orchestration via Slack — from your phone.
 
 ## Overview
@@ -128,12 +130,51 @@ The core logic is platform-agnostic. All platform communication goes through the
 
 ## Installation
 
+### Quick Start with npx
+
+Run Air Traffic directly without installing — just make sure your environment variables are set:
+
 ```bash
-git clone <repo-url>
+# Set required env vars (or use a .env file in the current directory)
+export SLACK_BOT_TOKEN=xoxb-...
+export SLACK_APP_TOKEN=xapp-...
+export SLACK_SIGNING_SECRET=...
+export ATC_MACHINE_NAME=my-machine
+
+npx air-traffic
+```
+
+### Global Install
+
+Install globally to get the `air-traffic` command:
+
+```bash
+npm install -g air-traffic
+air-traffic
+```
+
+### From Source
+
+```bash
+git clone https://github.com/danielgerlag/air-traffic.git
 cd air-traffic
 npm install
 cp .env.example .env
-# Edit .env with your Slack credentials and machine config
+```
+
+Edit `.env` with your Slack credentials and machine config:
+
+```env
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_APP_TOKEN=xapp-your-app-token
+SLACK_SIGNING_SECRET=your-signing-secret
+ATC_MACHINE_NAME=my-machine
+```
+
+Then run:
+
+```bash
+npm run dev
 ```
 
 ## Configuration
@@ -144,8 +185,8 @@ cp .env.example .env
 | `SLACK_APP_TOKEN` | App-Level Token with `connections:write` (`xapp-...`) | *required* |
 | `SLACK_SIGNING_SECRET` | Slack app signing secret | *required* |
 | `ATC_MACHINE_NAME` | Unique name for this machine (e.g. `desktop`, `laptop`) | *required* |
-| `ATC_PROJECTS_DIR` | Directory where project working copies are created | `./projects` |
-| `ATC_DATA_DIR` | Directory for project metadata and config storage | `./data` |
+| `ATC_PROJECTS_DIR` | Directory where project working copies are created | `~/projects` |
+| `ATC_DATA_DIR` | Directory for project metadata and config storage | `~/.air-traffic/data` |
 | `ATC_DEFAULT_MODEL` | Default Copilot model for new projects | `claude-sonnet-4.5` |
 | `ATC_LOG_LEVEL` | Log verbosity: `error`, `warn`, `info`, `debug` | `info` |
 | `ATC_WEB_PORT` | Port for the Air Traffic Console web UI | `8089` |
@@ -155,6 +196,9 @@ cp .env.example .env
 ## Running
 
 ```bash
+# Quick run (no install needed)
+npx air-traffic
+
 # Development (with hot-reload via tsx)
 npm run dev
 

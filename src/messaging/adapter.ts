@@ -26,6 +26,7 @@ export abstract class BaseMessagingAdapter implements MessagingAdapter {
   // Channels
   abstract createProjectChannel(machineName: string, projectName: string): Promise<ChannelInfo>;
   abstract archiveChannel(channelId: string): Promise<void>;
+  abstract setChannelTopic(channelId: string, topic: string): Promise<void>;
 
   // Messages
   abstract sendMessage(channelId: string, content: MessageContent): Promise<MessageRef>;
@@ -38,7 +39,7 @@ export abstract class BaseMessagingAdapter implements MessagingAdapter {
   abstract askPermission(channelId: string, threadId: string, request: PermissionRequest): Promise<PermissionDecision>;
 
   // File uploads
-  abstract sendFile(channelId: string, filePath: string, filename: string, initialComment?: string): Promise<void>;
+  abstract sendFile(channelId: string, filePath: string, filename: string, initialComment?: string, threadId?: string): Promise<void>;
 
   // File downloads
   abstract downloadFile(url: string, destPath: string): Promise<void>;

@@ -11,11 +11,34 @@ import { getLogger } from '../utils/logger.js';
 /** File patterns that trigger automatic upload to the messaging channel. */
 const PLAN_FILE_PATTERNS = ['plan.md', 'PLAN.md'];
 
-/** File extensions that should be auto-uploaded to the channel when created by tools. */
-const AUTO_UPLOAD_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.pdf'];
+/** File extensions used to detect artifact paths mentioned in tool output text. */
+const TOOL_OUTPUT_ARTIFACT_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.pdf'];
 
 /** Tools whose status we skip in the tool-call ticker (handled separately or too noisy). */
 const TOOL_STATUS_SKIP = new Set(['report_intent']);
+
+/** Human-friendly labels for tool calls shown in the assistant loading messages. */
+const TOOL_FRIENDLY_LABELS: Record<string, string> = {
+  grep: '🔍 Searching the codebase',
+  glob: '🔍 Finding files',
+  view: '📖 Reading files',
+  edit: '✏️ Making changes',
+  edit_file: '✏️ Making changes',
+  create: '📄 Creating files',
+  create_file: '📄 Creating files',
+  bash: '🖥️ Running commands',
+  shell: '🖥️ Running commands',
+  powershell: '🖥️ Running commands',
+  git: '🔀 Working with git',
+  git_commit: '🔀 Committing changes',
+  git_push: '🔀 Pushing changes',
+  web_fetch: '🌐 Fetching from the web',
+  web_search: '🌐 Searching the web',
+  fetch: '🌐 Fetching from the web',
+  ask_user: '💬 Waiting for input',
+  sql: '🗄️ Querying data',
+  'playwright-browser_take_screenshot': '📸 Taking a screenshot',
+};
 
 /** Extract a brief description for a tool call from its args. */
 function toolCallLabel(toolName: string, toolArgs: Record<string, unknown>): string {
@@ -125,6 +148,7 @@ export class AgentSession {
               this.currentIntent = intent;
               this.events.emit('intent', { intent });
               this.updateAssistantStatus();
+              this.setChannelTopic(`⚙️ ${intent}`);
             }
             return { permissionDecision: 'allow' as const };
           }
@@ -229,7 +253,7 @@ export class AgentSession {
             this.events.emit('subagent', { status: 'done', description, output: result });
           }
 
-          // Auto-upload image/file artifacts to the messaging channel
+          // Auto-upload file artifacts to the messaging channel
           const filePath = (args.path ?? args.filename ?? args.file_path ?? '') as string;
 
           if (
@@ -238,13 +262,29 @@ export class AgentSession {
           ) {
             if (filePath && this.currentThreadId) {
               await this.tryUploadArtifact(filePath);
+              // Clear pending plan file if we just uploaded it
+              if (this.pendingPlanFile && path.resolve(filePath) === path.resolve(this.pendingPlanFile)) {
+                this.pendingPlanFile = null;
+              }
             }
           }
 
-          // Scan tool output for file paths with uploadable extensions
+          // Upload plan files immediately when edited
+          if (toolName === 'edit' || toolName === 'edit_file') {
+            if (filePath && this.currentThreadId) {
+              const basename = path.basename(filePath);
+              if (PLAN_FILE_PATTERNS.includes(basename)) {
+                await this.tryUploadArtifact(filePath);
+                this.pendingPlanFile = null;
+              }
+            }
+          }
+
+          // Scan tool output for image file paths (fallback for tools like Playwright)
           const resultText = input.toolResult?.textResultForLlm ?? '';
           if (resultText && this.currentThreadId) {
-            const filePathPattern = /(?:[A-Z]:\\[\w\\.-]+|\/[\w/.-]+)\.(?:png|jpg|jpeg|gif|svg|webp|pdf)/gi;
+            const extPattern = TOOL_OUTPUT_ARTIFACT_EXTENSIONS.map(e => e.slice(1)).join('|');
+            const filePathPattern = new RegExp(`(?:[A-Z]:\\\\[\\w\\\\.-]+|\\/[\\w/.-]+)\\.(?:${extPattern})`, 'gi');
             const matches = resultText.match(filePathPattern);
             if (matches) {
               const seen = new Set<string>();
@@ -282,16 +322,26 @@ export class AgentSession {
     const loadingMessages: string[] = [];
     const recent = this.toolCallLog.slice(-10);
     for (const t of recent) {
-      const icon = t.done ? '✅' : '⚙️';
-      const detail = t.label ? ` — ${t.label}` : '';
-      loadingMessages.push(`${icon} ${t.name}${detail}`);
+      const friendly = TOOL_FRIENDLY_LABELS[t.name];
+      if (t.done) {
+        const detail = t.label ? ` — ${t.label}` : '';
+        loadingMessages.push(`✅ ${friendly ?? t.name}${detail}`);
+      } else {
+        loadingMessages.push(`${friendly ?? `⚙️ ${t.name}`}…`);
+      }
     }
 
     this.messaging.setThreadStatus(
       this.project.channelId,
       this.currentThreadId,
       status,
-      loadingMessages.length > 0 ? loadingMessages : undefined,
+      loadingMessages.length > 0 ? loadingMessages : [
+        '✈️ Preparing for takeoff…',
+        '📡 Scanning the codebase…',
+        '🛫 Copilot in the air…',
+        '🗼 Tower is coordinating…',
+        '🔍 Analyzing the situation…',
+      ],
     ).catch(() => {});
   }
 
@@ -371,6 +421,7 @@ export class AgentSession {
       this.clearAssistantStatus();
       this.activeSubAgent = null;
       this.currentIntent = '';
+      this.setChannelTopic('Copilot idle');
       this.flushDeltaBuffer()
         .then(async () => {
           this.stopDeltaFlush();
@@ -384,6 +435,7 @@ export class AgentSession {
                 this.pendingPlanFile,
                 path.basename(this.pendingPlanFile),
                 '📋 Plan ready for review',
+                this.currentThreadId ?? undefined,
               );
             } catch (err) {
               getLogger().error('Failed to upload plan file', { error: err });
@@ -420,6 +472,7 @@ export class AgentSession {
 
     this.events.emit('prompt', { text: prompt });
     this.updateAssistantStatus(); // Shows "Thinking…" via assistant API
+    this.setChannelTopic('⚙️ Copilot working…');
 
     const modePrefix = MODE_PREFIXES[this.project.mode ?? 'normal'] ?? '';
     await this.session!.send({ prompt: `${modePrefix}${prompt}` });
@@ -471,13 +524,13 @@ export class AgentSession {
     }
   }
 
-  /** Try to upload a file to the messaging channel if it has an uploadable extension. */
+  /** Try to upload a file artifact to the messaging channel. */
   private async tryUploadArtifact(filePath: string): Promise<void> {
-    const ext = path.extname(filePath).toLowerCase();
-    if (!AUTO_UPLOAD_EXTENSIONS.includes(ext)) return;
     const resolvedPath = path.isAbsolute(filePath)
       ? filePath
       : path.resolve(this.project.path, filePath);
+    // Only upload files that live under the project directory
+    if (!resolvedPath.startsWith(this.project.path + path.sep) && resolvedPath !== this.project.path) return;
     try {
       const fs = await import('node:fs');
       if (!fs.existsSync(resolvedPath)) return;
@@ -486,11 +539,20 @@ export class AgentSession {
         resolvedPath,
         path.basename(resolvedPath),
         `📎 ${path.basename(resolvedPath)}`,
+        this.currentThreadId ?? undefined,
       );
       getLogger().info(`Auto-uploaded artifact: ${resolvedPath}`);
     } catch (err) {
       getLogger().warn(`Failed to auto-upload artifact: ${resolvedPath}`, { error: err });
     }
+  }
+
+  // --- Channel topic ---
+
+  private setChannelTopic(topic: string): void {
+    this.messaging.setChannelTopic(this.project.channelId, topic).catch((err) => {
+      getLogger().debug('Failed to set channel topic', { error: err });
+    });
   }
 
   // --- Delta batching ---
@@ -514,7 +576,7 @@ export class AgentSession {
   private async flushDeltaBuffer(): Promise<void> {
     if (!this.deltaBuffer || !this.currentThreadId) return;
 
-    this.accumulatedContent += this.deltaBuffer;
+    this.accumulatedContent += (this.accumulatedContent ? '\n\n' : '') + this.deltaBuffer;
     this.deltaBuffer = '';
 
     // Slack has a 4000-char limit per message; start a new message if exceeded

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="tower" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#e2e8f0"/>
+      <stop offset="100%" style="stop-color:#94a3b8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+
+  <!-- Tower base -->
+  <rect x="224" y="280" width="64" height="140" rx="4" fill="url(#tower)"/>
+
+  <!-- Tower cab (control room) -->
+  <rect x="192" y="240" width="128" height="52" rx="8" fill="#e2e8f0"/>
+  <rect x="200" y="248" width="112" height="36" rx="4" fill="#38bdf8" opacity="0.7"/>
+
+  <!-- Tower roof -->
+  <polygon points="184,240 256,210 328,240" fill="#64748b"/>
+
+  <!-- Antenna -->
+  <line x1="256" y1="210" x2="256" y2="170" stroke="#e2e8f0" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="256" cy="166" r="6" fill="#38bdf8"/>
+
+  <!-- Radio waves (left) -->
+  <path d="M 220 185 Q 200 165 220 145" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0.8" stroke-linecap="round"/>
+  <path d="M 205 195 Q 175 165 205 135" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0.5" stroke-linecap="round"/>
+  <path d="M 190 205 Q 150 165 190 125" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0.3" stroke-linecap="round"/>
+
+  <!-- Radio waves (right) -->
+  <path d="M 292 185 Q 312 165 292 145" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0.8" stroke-linecap="round"/>
+  <path d="M 307 195 Q 337 165 307 135" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0.5" stroke-linecap="round"/>
+  <path d="M 322 205 Q 362 165 322 125" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0.3" stroke-linecap="round"/>
+
+  <!-- Ground line -->
+  <line x1="140" y1="420" x2="372" y2="420" stroke="#475569" stroke-width="3" stroke-linecap="round"/>
+</svg>
