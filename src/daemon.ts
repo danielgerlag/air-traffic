@@ -10,7 +10,7 @@ import { ModelRegistry } from './copilot/model-registry.js';
 import { PresenceManager } from './messaging/slack/presence.js';
 import { extractProjectName } from './messaging/slack/commands.js';
 import { parseProjectChannelMessage } from './messaging/slack/commands.js';
-import { formatControlHelp, formatMachineStatus, formatMenu } from './messaging/slack/formatters.js';
+import { formatControlHelp, formatMachineStatus, formatMenu, formatProjectHelp } from './messaging/slack/formatters.js';
 import { MODE_DESCRIPTIONS } from './projects/types.js';
 import type { CopilotMode } from './projects/types.js';
 import { WebServer } from './web/server.js';
@@ -256,6 +256,9 @@ export class AirTrafficDaemon {
           break;
         case 'history':
           await this.cmdHistory(projectName, msg);
+          break;
+        case 'help':
+          await this.adapter.sendMessage(msg.channelId, formatProjectHelp(projectName));
           break;
         default:
           log.warn(`Unknown project command: !${command}`);

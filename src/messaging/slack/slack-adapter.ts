@@ -717,6 +717,11 @@ export class SlackAdapter extends BaseMessagingAdapter {
         messageId: msg.messageId,
       };
       await this.dispatchCommand(cmd);
+    } else if (msg.text.startsWith('!')) {
+      // Unknown ! command — show error with suggestions
+      const projectCommands = ['model', 'status', 'abort', 'diff', 'agent', 'mode', 'history', 'sessions', 'join', 'leave', 'help'];
+      const attempted = msg.text.slice(1).split(/\s+/)[0]?.toLowerCase() ?? '';
+      await this.sendMessage(msg.channelId, formatUnknownCommand(attempted, suggestCommands(attempted, projectCommands)));
     } else {
       // Regular text — treat as prompt message
       await this.dispatchMessage(msg);
