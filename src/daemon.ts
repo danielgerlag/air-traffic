@@ -269,12 +269,16 @@ export class AirTrafficDaemon {
   // --- Control-channel command implementations ---
 
   private async cmdCreateProject(cmd: IncomingCommand): Promise<void> {
-    const { args } = cmd;
+    let { args } = cmd;
     if (args.length === 0) {
-      await this.adapter.sendMessage(cmd.channelId, {
-        text: '❌ Usage: `create <name> [--from <repo-url>]`',
+      const response = await this.adapter.askQuestion(cmd.channelId, cmd.threadId ?? cmd.channelId, {
+        question: '📦 What should the project be called?',
+        allowFreeform: true,
       });
-      return;
+      if (response.timedOut) return;
+      const answer = response.answer.trim();
+      if (!answer) return;
+      args = answer.split(/\s+/);
     }
 
     const name = args[0];
