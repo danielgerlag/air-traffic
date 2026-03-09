@@ -446,60 +446,68 @@ export class SlackAdapter extends BaseMessagingAdapter {
 
     // Handle regular messages (prompts in project channels, control commands in DMs)
     this.app.message(async ({ message }) => {
-      // Ignore bot messages and subtypes (edits, deletes, etc.) — but allow file_share subtype
-      if (!message) return;
-      if (message.subtype && message.subtype !== 'file_share') return;
+      const log = getLogger();
+      try {
+        // Ignore bot messages and subtypes (edits, deletes, etc.) — but allow file_share subtype
+        if (!message) return;
+        if (message.subtype && message.subtype !== 'file_share') return;
 
-      const msg = message as { text?: string; user?: string; ts?: string; thread_ts?: string; channel?: string; files?: Array<{ name: string; url_private_download?: string; mimetype?: string; size?: number }> };
-      if (!msg.user || !msg.channel) return;
+        const msg = message as { text?: string; user?: string; ts?: string; thread_ts?: string; channel?: string; channel_type?: string; files?: Array<{ name: string; url_private_download?: string; mimetype?: string; size?: number }> };
+        if (!msg.user || !msg.channel) return;
 
-      // A message must have text or files
-      if (!msg.text && (!msg.files || msg.files.length === 0)) return;
+        // A message must have text or files
+        if (!msg.text && (!msg.files || msg.files.length === 0)) return;
 
-      // Ignore own messages
-      if (msg.user === this.botUserId) return;
+        // Ignore own messages
+        if (msg.user === this.botUserId) return;
 
-      // Resolve channel name
-      const channelName = await this.resolveChannelName(msg.channel);
+        log.debug('Incoming message', { channel: msg.channel, channelType: msg.channel_type, text: msg.text?.slice(0, 50), user: msg.user });
 
-      // Map attached files to IncomingFile[]
-      const files = msg.files
-        ?.filter((f) => f.url_private_download)
-        .map((f) => ({
-          name: f.name,
-          url: f.url_private_download!,
-          mimeType: f.mimetype,
-          size: f.size,
-        }));
+        // Resolve channel name
+        const channelName = await this.resolveChannelName(msg.channel);
 
-      const incoming: IncomingMessage = {
-        channelId: msg.channel,
-        channelName,
-        threadId: msg.thread_ts,
-        userId: msg.user,
-        text: msg.text || '',
-        messageId: msg.ts!,
-        timestamp: new Date(parseFloat(msg.ts!) * 1000),
-        ...(files && files.length > 0 ? { files } : {}),
-      };
+        // Map attached files to IncomingFile[]
+        const files = msg.files
+          ?.filter((f) => f.url_private_download)
+          .map((f) => ({
+            name: f.name,
+            url: f.url_private_download!,
+            mimeType: f.mimetype,
+            size: f.size,
+          }));
 
-      const isDm = msg.channel.startsWith('D');
+        const incoming: IncomingMessage = {
+          channelId: msg.channel,
+          channelName,
+          threadId: msg.thread_ts,
+          userId: msg.user,
+          text: msg.text || '',
+          messageId: msg.ts!,
+          timestamp: new Date(parseFloat(msg.ts!) * 1000),
+          ...(files && files.length > 0 ? { files } : {}),
+        };
 
-      if (isDm) {
-        // Welcome message on first contact
-        if (!this.seenDmUsers.has(msg.user)) {
-          this.seenDmUsers.add(msg.user);
-          await this.sendMessage(msg.channel, formatWelcome(this.machineName));
+        const isDm = msg.channel_type === 'im' || msg.channel.startsWith('D');
+
+        if (isDm) {
+          log.debug('Handling DM', { channel: msg.channel, text: msg.text?.slice(0, 50) });
+          // Welcome message on first contact
+          if (!this.seenDmUsers.has(msg.user)) {
+            this.seenDmUsers.add(msg.user);
+            await this.sendMessage(msg.channel, formatWelcome(this.machineName));
+          }
+
+          // Check for thread replies to pending questions first
+          if (msg.thread_ts) {
+            this.handlePossibleQuestionReply(incoming);
+          }
+
+          await this.handleControlMessage(incoming);
+        } else if (isProjectChannel(channelName, this.machineName)) {
+          await this.handleProjectMessage(incoming);
         }
-
-        // Check for thread replies to pending questions first
-        if (msg.thread_ts) {
-          this.handlePossibleQuestionReply(incoming);
-        }
-
-        await this.handleControlMessage(incoming);
-      } else if (isProjectChannel(channelName, this.machineName)) {
-        await this.handleProjectMessage(incoming);
+      } catch (err) {
+        log.error('Error handling message event', { error: err });
       }
     });
 
