@@ -194,25 +194,8 @@ export class InMemoryMessagingAdapter extends BaseMessagingAdapter {
     return [...this.registeredMachines.values()];
   }
 
-  // --- Multi-machine forwarding (for testing) ---
-
-  readonly forwardedCommands: IncomingCommand[] = [];
-  readonly forwardedMessages: Array<{ targetMachine: string; msg: IncomingMessage }> = [];
-
-  // Peer adapter (simulates the registry channel link between two daemons)
-  private peerAdapter: InMemoryMessagingAdapter | null = null;
-
-  /** Connect two adapters so forwarded commands/messages reach the peer. */
-  linkPeer(peer: InMemoryMessagingAdapter): void {
-    this.peerAdapter = peer;
-    peer.peerAdapter = this;
-  }
-
-  async forwardCommand(cmd: IncomingCommand): Promise<void> {
-    this.forwardedCommands.push(cmd);
-    if (this.peerAdapter && cmd.targetMachine?.toLowerCase() === this.peerAdapter.machineName.toLowerCase()) {
-      await this.peerAdapter.dispatchCommand(cmd);
-    }
+  async forwardCommand(_cmd: IncomingCommand): Promise<void> {
+    // No-op — single machine, no forwarding needed
   }
 
   wasPresenceReported(): boolean {
@@ -226,42 +209,7 @@ export class InMemoryMessagingAdapter extends BaseMessagingAdapter {
   }
 
   async simulateIncomingCommand(cmd: IncomingCommand): Promise<void> {
-    // Simulate multi-machine routing: if targeted to another machine, forward to peer
-    if (cmd.type === 'targeted' && cmd.targetMachine &&
-        cmd.targetMachine.toLowerCase() !== this.machineName.toLowerCase()) {
-      this.forwardedCommands.push(cmd);
-      if (this.peerAdapter && cmd.targetMachine.toLowerCase() === this.peerAdapter.machineName.toLowerCase()) {
-        await this.peerAdapter.dispatchCommand(cmd);
-      }
-      return;
-    }
-
-    if (cmd.type === 'broadcast') {
-      // True broadcast commands go to all machines
-      if (['status', 'machines', 'models'].includes(cmd.command)) {
-        await this.dispatchBroadcast(cmd);
-        return;
-      }
-      // Non-broadcast commands without a prefix: route as local command
-      // (matches Slack adapter's handleControlMessage behavior)
-      cmd.targetMachine = this.machineName;
-      await this.dispatchCommand(cmd);
-      return;
-    }
-
     await this.dispatchCommand(cmd);
-  }
-
-  /** Simulate a message in a project channel that may belong to another machine. */
-  async simulateProjectMessage(msg: IncomingMessage, ownerMachine?: string): Promise<void> {
-    if (ownerMachine && ownerMachine.toLowerCase() !== this.machineName.toLowerCase()) {
-      this.forwardedMessages.push({ targetMachine: ownerMachine, msg });
-      if (this.peerAdapter && ownerMachine.toLowerCase() === this.peerAdapter.machineName.toLowerCase()) {
-        await this.peerAdapter.dispatchMessage(msg);
-      }
-      return;
-    }
-    await this.dispatchMessage(msg);
   }
 
   // --- Assertion helpers ---
@@ -301,8 +249,6 @@ export class InMemoryMessagingAdapter extends BaseMessagingAdapter {
     this.questionResponses.length = 0;
     this.permissionDecisions.length = 0;
     this.registeredMachines.clear();
-    this.forwardedCommands.length = 0;
-    this.forwardedMessages.length = 0;
     this.presenceReported = false;
     this.channelIdCounter = 0;
     this.messageIdCounter = 0;

@@ -1,4 +1,13 @@
 #!/usr/bin/env node
+
+// Handle subcommands before loading config (which requires env vars)
+const subcommand = process.argv[2];
+if (subcommand === 'init') {
+  const { runInit } = await import('./cli/init.js');
+  await runInit();
+  process.exit(0);
+}
+
 import { loadConfig } from './config.js';
 import { createLogger } from './utils/logger.js';
 import { SlackAdapter } from './messaging/slack/slack-adapter.js';

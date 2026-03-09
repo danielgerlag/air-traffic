@@ -193,12 +193,12 @@ describe('InMemoryMessagingAdapter', () => {
       expect(received).toEqual(['create']);
     });
 
-    it('should dispatch broadcast commands to broadcast handlers', async () => {
+    it('should dispatch all commands to command handlers', async () => {
       const received: string[] = [];
-      adapter.onBroadcast((cmd) => { received.push(cmd.command); });
+      adapter.onCommand((cmd) => { received.push(cmd.command); });
 
       await adapter.simulateIncomingCommand({
-        type: 'broadcast',
+        type: 'targeted',
         command: 'status',
         args: [],
         rawText: 'status',

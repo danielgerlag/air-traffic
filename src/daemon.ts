@@ -10,7 +10,7 @@ import { ModelRegistry } from './copilot/model-registry.js';
 import { PresenceManager } from './messaging/slack/presence.js';
 import { extractProjectName } from './messaging/slack/commands.js';
 import { parseProjectChannelMessage } from './messaging/slack/commands.js';
-import { formatControlHelp, formatMachineStatus } from './messaging/slack/formatters.js';
+import { formatControlHelp, formatMachineStatus, formatMenu } from './messaging/slack/formatters.js';
 import { MODE_DESCRIPTIONS } from './projects/types.js';
 import type { CopilotMode } from './projects/types.js';
 import { WebServer } from './web/server.js';
@@ -57,7 +57,6 @@ export class AirTrafficDaemon {
     this.presence.start();
 
     this.adapter.onCommand((cmd) => this.handleCommand(cmd));
-    this.adapter.onBroadcast((cmd) => this.handleBroadcast(cmd));
     this.adapter.onMessage((msg) => this.handleMessage(msg));
 
     // Start Console web server
@@ -93,7 +92,7 @@ export class AirTrafficDaemon {
   private async handleCommand(cmd: IncomingCommand): Promise<void> {
     const log = getLogger();
 
-    // Check if this command came from a project channel (e.g. via /atc slash command)
+    // Check if this command came from a project channel
     const projectName = extractProjectName(cmd.channelName, this.config.airTraffic.machineName);
     if (projectName) {
       try {
@@ -143,35 +142,17 @@ export class AirTrafficDaemon {
         case 'help':
           await this.adapter.sendMessage(cmd.channelId, formatControlHelp(this.config.airTraffic.machineName));
           break;
+        case 'menu':
+          await this.adapter.sendMessage(cmd.channelId, formatMenu(this.config.airTraffic.machineName));
+          break;
+        case 'machines':
+          await this.postMachineStatus(cmd.channelId);
+          break;
         default:
-          log.warn(`Unknown targeted command: ${cmd.command}`);
+          log.warn(`Unknown command: ${cmd.command}`);
       }
     } catch (err) {
       log.error(`Error handling command "${cmd.command}"`, { error: err });
-      await this.postError(cmd.channelId, err);
-    }
-  }
-
-  private async handleBroadcast(cmd: IncomingCommand): Promise<void> {
-    const log = getLogger();
-    try {
-      switch (cmd.command) {
-        case 'status':
-          await this.postMachineStatus(cmd.channelId);
-          break;
-        case 'machines':
-          await this.postMachinePresence(cmd.channelId);
-          break;
-        case 'models':
-          await this.postAvailableModels(cmd.channelId);
-          break;
-        case 'help':
-          break;
-        default:
-          log.debug(`Ignoring broadcast command: ${cmd.command}`);
-      }
-    } catch (err) {
-      log.error(`Error handling broadcast "${cmd.command}"`, { error: err });
       await this.postError(cmd.channelId, err);
     }
   }
@@ -291,31 +272,9 @@ export class AirTrafficDaemon {
     const { args } = cmd;
     if (args.length === 0) {
       await this.adapter.sendMessage(cmd.channelId, {
-        text: '❌ Usage: `create <name> [--from <repo-url>]`\nTo target a machine: `<machine>: create <name>`',
+        text: '❌ Usage: `create <name> [--from <repo-url>]`',
       });
       return;
-    }
-
-    // If no explicit machine prefix was used, check if we should ask
-    if (cmd.type === 'broadcast') {
-      const machines = await this.adapter.getRegisteredMachines();
-      const onlineMachines = machines.filter(m => m.online);
-      if (onlineMachines.length > 1) {
-        const response = await this.adapter.askQuestion(cmd.channelId, cmd.threadId ?? cmd.channelId, {
-          question: '🖥️ Which machine should this project be created on?',
-          choices: onlineMachines.map(m => m.machineName),
-          allowFreeform: false,
-        });
-        if (response.timedOut) return;
-        const selected = response.answer.trim();
-        if (selected.toLowerCase() !== this.config.airTraffic.machineName.toLowerCase()) {
-          // Forward to the selected machine
-          cmd.targetMachine = selected;
-          cmd.type = 'targeted';
-          await this.adapter.forwardCommand(cmd);
-          return;
-        }
-      }
     }
 
     const name = args[0];
@@ -329,27 +288,6 @@ export class AirTrafficDaemon {
   }
 
   private async cmdDeleteProject(cmd: IncomingCommand): Promise<void> {
-    // If no explicit machine prefix was used, check if we should ask
-    if (cmd.type === 'broadcast') {
-      const machines = await this.adapter.getRegisteredMachines();
-      const onlineMachines = machines.filter(m => m.online);
-      if (onlineMachines.length > 1) {
-        const response = await this.adapter.askQuestion(cmd.channelId, cmd.threadId ?? cmd.channelId, {
-          question: '🖥️ Which machine should this delete run on?',
-          choices: onlineMachines.map(m => m.machineName),
-          allowFreeform: false,
-        });
-        if (response.timedOut) return;
-        const selected = response.answer.trim();
-        if (selected.toLowerCase() !== this.config.airTraffic.machineName.toLowerCase()) {
-          cmd.targetMachine = selected;
-          cmd.type = 'targeted';
-          await this.adapter.forwardCommand(cmd);
-          return;
-        }
-      }
-    }
-
     let name = cmd.args[0];
     if (!name) {
       // Show project picker
@@ -906,11 +844,6 @@ export class AirTrafficDaemon {
     await this.adapter.sendMessage(channelId, {
       text: `🖥️ *Registered machines:*\n\n${lines.join('\n\n')}`,
     });
-  }
-
-  private async postMachinePresence(channelId: string): Promise<void> {
-    // Same as status — show all known machines
-    await this.postMachineStatus(channelId);
   }
 
   private async postAvailableModels(channelId: string): Promise<void> {

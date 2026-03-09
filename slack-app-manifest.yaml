@@ -16,11 +16,6 @@ features:
     home_tab_enabled: false
     messages_tab_enabled: true
     messages_tab_read_only_enabled: false
-  slash_commands:
-    - command: /atc
-      description: Air Traffic — manage projects and Copilot sessions
-      usage_hint: "[machine:] <command> [args] — e.g. create my-app, status, model gpt-5"
-      should_escape: false
 
 oauth_config:
   scopes:
@@ -45,16 +40,17 @@ oauth_config:
       - groups:write
       # User info (for display names in logs)
       - users:read
-      # Interactivity (button clicks for permission/question flows)
+      # DMs
       - im:history
-      # Slash commands
-      - commands
+      - im:read
+      - im:write
 
 settings:
   event_subscriptions:
     bot_events:
       - message.channels       # Messages in public channels (prompts in project channels)
       - message.groups         # Messages in private channels
+      - message.im             # Direct messages to the bot
   interactivity:
     is_enabled: true           # Required for Block Kit button actions
   org_deploy_enabled: false

@@ -20,7 +20,6 @@ import {
   parseControlChannelMessage,
   parseProjectChannelMessage,
   isProjectChannel,
-  parseAnyProjectChannel,
   extractProjectName,
 } from './commands.js';
 import {
@@ -29,7 +28,10 @@ import {
   formatControlHelp,
   formatProjectHelp,
   formatUnknownCommand,
+  formatMenu,
+  formatWelcome,
 } from './formatters.js';
+import { classifyIntent } from '../intent.js';
 import { getLogger } from '../../utils/logger.js';
 
 /** Simple Levenshtein-based command suggestion. */
@@ -83,6 +85,9 @@ export class SlackAdapter extends BaseMessagingAdapter {
   private registryChannelId: string | null = null;
   private heartbeatMessageTs: string | null = null;
 
+  // Track DM users who have already received a welcome message
+  private seenDmUsers = new Set<string>();
+
   private readonly config: SlackAdapterConfig;
 
   constructor(config: SlackAdapterConfig) {
@@ -107,12 +112,9 @@ export class SlackAdapter extends BaseMessagingAdapter {
     // Resolve bot user ID
     const authResult = await this.app.client.auth.test({ token: this.config.botToken });
     this.botUserId = (authResult.user_id as string) ?? null;
-
-    this.startForwardPolling();
   }
 
   async disconnect(): Promise<void> {
-    this.stopForwardPolling();
     if (this.app) {
       await this.app.stop();
       this.app = null;
@@ -418,184 +420,8 @@ export class SlackAdapter extends BaseMessagingAdapter {
     }
   }
 
-  // --- Cross-daemon command forwarding (public interface) ---
-
-  async forwardCommand(cmd: IncomingCommand): Promise<void> {
-    await this.forwardControlCommand(cmd);
-  }
-
-  // --- Cross-daemon action forwarding ---
-
-  private forwardPollTimer: ReturnType<typeof setInterval> | null = null;
-  private lastForwardCheckTs: string | undefined;
-
-  /**
-   * Post a forwarded action response to the registry channel so the owning
-   * daemon can pick it up. Format: `[atc-fwd] requestId|type|value`
-   */
-  private async forwardActionResponse(requestId: string, type: 'question' | 'permission', value: string): Promise<void> {
-    try {
-      const channelId = await this.ensureRegistryChannel();
-      await this.client.chat.postMessage({
-        channel: channelId,
-        text: `[atc-fwd] ${requestId}|${type}|${value}`,
-      });
-    } catch {
-      // Best-effort
-    }
-  }
-
-  /**
-   * Forward a project channel message that was routed to the wrong daemon.
-   */
-  private async forwardProjectMessage(targetMachine: string, msg: IncomingMessage): Promise<void> {
-    try {
-      const channelId = await this.ensureRegistryChannel();
-      const payload = JSON.stringify({
-        type: 'msg',
-        targetMachine,
-        channelId: msg.channelId,
-        channelName: msg.channelName,
-        threadId: msg.threadId ?? '',
-        userId: msg.userId,
-        text: msg.text,
-        messageId: msg.messageId,
-        timestamp: msg.timestamp.toISOString(),
-      });
-      await this.client.chat.postMessage({
-        channel: channelId,
-        text: `[atc-msg] ${payload}`,
-      });
-    } catch {
-      // Best-effort
-    }
-  }
-
-  /**
-   * Forward a control command targeted at a different machine.
-   */
-  private async forwardControlCommand(cmd: IncomingCommand): Promise<void> {
-    try {
-      const channelId = await this.ensureRegistryChannel();
-      const payload = JSON.stringify({
-        type: 'cmd',
-        targetMachine: cmd.targetMachine,
-        command: cmd.command,
-        args: cmd.args,
-        rawText: cmd.rawText,
-        channelId: cmd.channelId,
-        channelName: cmd.channelName,
-        threadId: cmd.threadId ?? '',
-        userId: cmd.userId,
-        messageId: cmd.messageId,
-      });
-      await this.client.chat.postMessage({
-        channel: channelId,
-        text: `[atc-cmd] ${payload}`,
-      });
-    } catch {
-      // Best-effort
-    }
-  }
-
-  /** Start polling the registry channel for forwarded responses and messages. */
-  startForwardPolling(): void {
-    if (this.forwardPollTimer) return;
-    this.forwardPollTimer = setInterval(() => {
-      void this.checkForwardedResponses();
-    }, 2_000);
-  }
-
-  stopForwardPolling(): void {
-    if (this.forwardPollTimer) {
-      clearInterval(this.forwardPollTimer);
-      this.forwardPollTimer = null;
-    }
-  }
-
-  private async checkForwardedResponses(): Promise<void> {
-    try {
-      const channelId = await this.ensureRegistryChannel();
-      const params: Record<string, unknown> = { channel: channelId, limit: 20 };
-      if (this.lastForwardCheckTs) params.oldest = this.lastForwardCheckTs;
-      const history = await this.client.conversations.history(params as any);
-
-      const messages = history.messages ?? [];
-      // Slack returns messages newest-first; track the newest ts to avoid re-processing
-      if (messages.length > 0 && messages[0].ts) {
-        this.lastForwardCheckTs = messages[0].ts;
-      }
-
-      for (const msg of messages) {
-        if (msg.text?.startsWith('[atc-fwd] ')) {
-          // Skip if nothing is pending
-          if (this.pendingQuestions.size === 0 && this.pendingPermissions.size === 0) continue;
-
-          const payload = msg.text.slice('[atc-fwd] '.length);
-          const [requestId, type, ...valueParts] = payload.split('|');
-          const value = valueParts.join('|');
-
-          if (type === 'question') {
-            const pending = this.pendingQuestions.get(requestId);
-            if (pending) {
-              pending.resolver({ answer: value, wasFreeform: false, timedOut: false });
-              try { await this.client.chat.delete({ channel: channelId, ts: msg.ts! }); } catch {}
-            }
-          } else if (type === 'permission') {
-            const resolver = this.pendingPermissions.get(requestId);
-            if (resolver) {
-              resolver(value as PermissionDecision);
-              try { await this.client.chat.delete({ channel: channelId, ts: msg.ts! }); } catch {}
-            }
-          }
-        } else if (msg.text?.startsWith('[atc-msg] ')) {
-          // Forwarded project channel message — check if it's for this machine
-          try {
-            const data = JSON.parse(msg.text.slice('[atc-msg] '.length));
-            if (data.targetMachine?.toLowerCase() === this.machineName.toLowerCase()) {
-              const incoming: IncomingMessage = {
-                channelId: data.channelId,
-                channelName: data.channelName,
-                threadId: data.threadId || undefined,
-                userId: data.userId,
-                text: data.text,
-                messageId: data.messageId,
-                timestamp: new Date(data.timestamp),
-              };
-              await this.handleProjectMessage(incoming);
-              try { await this.client.chat.delete({ channel: channelId, ts: msg.ts! }); } catch {}
-            }
-          } catch {
-            // Malformed forward — ignore
-          }
-        } else if (msg.text?.startsWith('[atc-cmd] ')) {
-          // Forwarded control command — check if it's for this machine
-          try {
-            const data = JSON.parse(msg.text.slice('[atc-cmd] '.length));
-            if (data.targetMachine?.toLowerCase() === this.machineName.toLowerCase()) {
-              const cmd: IncomingCommand = {
-                type: 'targeted',
-                targetMachine: this.machineName,
-                command: data.command,
-                args: data.args ?? [],
-                rawText: data.rawText ?? '',
-                channelId: data.channelId,
-                channelName: data.channelName ?? '',
-                threadId: data.threadId || undefined,
-                userId: data.userId,
-                messageId: data.messageId,
-              };
-              await this.dispatchCommand(cmd);
-              try { await this.client.chat.delete({ channel: channelId, ts: msg.ts! }); } catch {}
-            }
-          } catch {
-            // Malformed forward — ignore
-          }
-        }
-      }
-    } catch {
-      // Best-effort
-    }
+  async forwardCommand(_cmd: IncomingCommand): Promise<void> {
+    // No-op — cross-machine forwarding removed
   }
 
   // --- Private helpers ---
@@ -618,107 +444,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
   private registerEventHandlers(): void {
     if (!this.app) return;
 
-    // Handle /atc slash command
-    this.app.command('/atc', async ({ command, ack }) => {
-      await ack();
-
-      const channelId = command.channel_id;
-      const channelName = await this.resolveChannelName(channelId);
-      const text = command.text.trim();
-      const userId = command.user_id;
-      const messageId = command.trigger_id;
-
-      const isProject = isProjectChannel(channelName, this.machineName);
-      const anyProject = !isProject ? parseAnyProjectChannel(channelName) : null;
-
-      // Empty command or "help" — show context-aware help
-      if (!text || text.toLowerCase() === 'help') {
-        if (isProject) {
-          const projectName = extractProjectName(channelName, this.machineName) ?? channelName;
-          await this.sendMessage(channelId, formatProjectHelp(projectName));
-        } else {
-          await this.sendMessage(channelId, formatControlHelp(this.machineName));
-        }
-        return;
-      }
-
-      if (isProject) {
-        // In a project channel: treat as project command
-        const tokens = text.split(/\s+/);
-        const cmdName = tokens[0]?.toLowerCase();
-        if (!cmdName) return;
-
-        const projectCommands = ['status', 'abort', 'diff', 'model', 'agent', 'mode', 'history', 'sessions', 'join', 'leave'];
-        if (!projectCommands.includes(cmdName)) {
-          await this.sendMessage(channelId, formatUnknownCommand(cmdName, suggestCommands(cmdName, projectCommands)));
-          return;
-        }
-
-        const cmd: IncomingCommand = {
-          type: 'targeted',
-          targetMachine: this.machineName,
-          command: cmdName,
-          args: tokens.slice(1),
-          rawText: text,
-          channelId,
-          channelName,
-          userId,
-          messageId,
-        };
-        await this.dispatchCommand(cmd);
-      } else if (anyProject) {
-        // Another machine's project channel — forward the command as a message
-        const incoming: IncomingMessage = {
-          channelId,
-          channelName,
-          userId,
-          text,
-          messageId,
-          timestamp: new Date(),
-        };
-        void this.forwardProjectMessage(anyProject.machineName, incoming);
-      } else {
-        // DM or any other channel: parse as control command and route like handleControlMessage
-        const parsed = parseControlChannelMessage(text);
-        if (!parsed) {
-          const controlCommands = ['create', 'delete', 'list', 'config', 'status', 'models', 'sessions', 'join', 'help'];
-          const firstWord = text.split(/\s+/)[0]?.toLowerCase() ?? '';
-          await this.sendMessage(channelId, formatUnknownCommand(firstWord, suggestCommands(firstWord, controlCommands)));
-          return;
-        }
-
-        const cmd: IncomingCommand = {
-          type: parsed.type,
-          targetMachine: parsed.targetMachine ?? this.machineName,
-          command: parsed.command,
-          args: parsed.args,
-          rawText: text,
-          channelId,
-          channelName,
-          userId,
-          messageId,
-        };
-
-        if (cmd.type === 'broadcast') {
-          if (['status', 'machines', 'models'].includes(cmd.command)) {
-            await this.dispatchBroadcast(cmd);
-            return;
-          }
-          // Non-broadcast commands without a prefix: handle locally
-          cmd.targetMachine = this.machineName;
-        }
-
-        // If targeted to a different machine, forward through registry
-        if (cmd.targetMachine!.toLowerCase() !== this.machineName.toLowerCase()) {
-          void this.forwardControlCommand(cmd);
-          return;
-        }
-
-        await this.dispatchCommand(cmd);
-      }
-    });
-
-    // Handle regular messages (prompts in project channels, freeform question replies)
+    // Handle regular messages (prompts in project channels, control commands in DMs)
     this.app.message(async ({ message }) => {
       // Ignore bot messages and subtypes (edits, deletes, etc.) — but allow file_share subtype
       if (!message) return;
@@ -757,23 +483,23 @@ export class SlackAdapter extends BaseMessagingAdapter {
         ...(files && files.length > 0 ? { files } : {}),
       };
 
-      // Check for thread replies to pending questions
-      if (msg.thread_ts) {
-        this.handlePossibleQuestionReply(incoming);
-      }
-
       const isDm = msg.channel.startsWith('D');
 
       if (isDm) {
+        // Welcome message on first contact
+        if (!this.seenDmUsers.has(msg.user)) {
+          this.seenDmUsers.add(msg.user);
+          await this.sendMessage(msg.channel, formatWelcome(this.machineName));
+        }
+
+        // Check for thread replies to pending questions first
+        if (msg.thread_ts) {
+          this.handlePossibleQuestionReply(incoming);
+        }
+
         await this.handleControlMessage(incoming);
       } else if (isProjectChannel(channelName, this.machineName)) {
         await this.handleProjectMessage(incoming);
-      } else {
-        // Check if this is another machine's project channel
-        const parsed = parseAnyProjectChannel(channelName);
-        if (parsed && parsed.machineName !== this.machineName.toLowerCase()) {
-          void this.forwardProjectMessage(parsed.machineName, incoming);
-        }
       }
     });
 
@@ -816,9 +542,6 @@ export class SlackAdapter extends BaseMessagingAdapter {
       const resolver = this.pendingPermissions.get(requestId);
       if (resolver) {
         resolver(decision);
-      } else {
-        // Forward to the registry channel so the owning daemon can pick it up
-        void this.forwardActionResponse(requestId, 'permission', decision);
       }
     });
 
@@ -869,10 +592,31 @@ export class SlackAdapter extends BaseMessagingAdapter {
       const pending = this.pendingQuestions.get(requestId);
       if (pending) {
         pending.resolver({ answer, wasFreeform: false, timedOut: false });
-      } else {
-        // Forward to the registry channel so the owning daemon can pick it up
-        void this.forwardActionResponse(requestId, 'question', answer);
       }
+    });
+
+    // Handle interactive menu button actions
+    this.app.action(/^menu_/, async ({ action, ack, body }) => {
+      await ack();
+      const act = action as { action_id?: string; value?: string };
+      if (!act.value) return;
+
+      const msgBody = body as { channel?: { id?: string }; user?: { id?: string }; message?: { ts?: string } };
+      const channelId = msgBody.channel?.id;
+      const userId = msgBody.user?.id;
+      if (!channelId || !userId) return;
+
+      const cmd: IncomingCommand = {
+        type: 'targeted',
+        command: act.value,
+        args: [],
+        rawText: act.value,
+        channelId,
+        channelName: '',
+        userId,
+        messageId: msgBody.message?.ts ?? '',
+      };
+      await this.dispatchCommand(cmd);
     });
   }
 
@@ -888,37 +632,44 @@ export class SlackAdapter extends BaseMessagingAdapter {
 
   private async handleControlMessage(msg: IncomingMessage): Promise<void> {
     const parsed = parseControlChannelMessage(msg.text);
-    if (!parsed) return;
-
-    const cmd: IncomingCommand = {
-      type: parsed.type,
-      targetMachine: parsed.targetMachine ?? this.machineName,
-      command: parsed.command,
-      args: parsed.args,
-      rawText: msg.text,
-      channelId: msg.channelId,
-      channelName: msg.channelName,
-      threadId: msg.threadId,
-      userId: msg.userId,
-      messageId: msg.messageId,
-    };
-
-    if (cmd.type === 'broadcast') {
-      if (['status', 'machines', 'models'].includes(cmd.command)) {
-        await this.dispatchBroadcast(cmd);
-        return;
-      }
-      // Non-broadcast commands without a prefix: handle locally
-      cmd.targetMachine = this.machineName;
-    }
-
-    // If targeted to a different machine, forward through registry
-    if (cmd.targetMachine!.toLowerCase() !== this.machineName.toLowerCase()) {
-      void this.forwardControlCommand(cmd);
+    if (parsed) {
+      const cmd: IncomingCommand = {
+        type: 'targeted',
+        command: parsed.command,
+        args: parsed.args,
+        rawText: msg.text,
+        channelId: msg.channelId,
+        channelName: msg.channelName,
+        threadId: msg.threadId,
+        userId: msg.userId,
+        messageId: msg.messageId,
+      };
+      await this.dispatchCommand(cmd);
       return;
     }
 
-    await this.dispatchCommand(cmd);
+    // Try NL intent classification
+    const intent = classifyIntent(msg.text);
+    if (intent) {
+      const cmd: IncomingCommand = {
+        type: 'targeted',
+        command: intent.command,
+        args: intent.args,
+        rawText: msg.text,
+        channelId: msg.channelId,
+        channelName: msg.channelName,
+        threadId: msg.threadId,
+        userId: msg.userId,
+        messageId: msg.messageId,
+      };
+      await this.dispatchCommand(cmd);
+      return;
+    }
+
+    // No match — show suggestions
+    const controlCommands = ['create', 'delete', 'list', 'config', 'status', 'models', 'sessions', 'join', 'menu', 'help'];
+    const firstWord = msg.text.split(/\s+/)[0]?.toLowerCase() ?? '';
+    await this.sendMessage(msg.channelId, formatUnknownCommand(firstWord, suggestCommands(firstWord, controlCommands)));
   }
 
   private async handleProjectMessage(msg: IncomingMessage): Promise<void> {

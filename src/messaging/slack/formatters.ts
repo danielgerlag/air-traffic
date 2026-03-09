@@ -190,19 +190,20 @@ export function formatControlHelp(machineName: string): MessageContent {
     `📖 *Air Traffic Commands* — machine: \`${machineName}\``,
     '',
     '*Project management*',
-    '`/atc create <name> [--from <repo-url>]` — Create a new project',
-    '`/atc delete [name]` — Delete a project (picker if omitted)',
-    '`/atc list` — List all projects',
-    '`/atc config [project] [field] [value]` — Update config (guided wizard if omitted)',
+    '`create <name> [--from <repo-url>]` — Create a new project',
+    '`delete [name]` — Delete a project (picker if omitted)',
+    '`list` — List all projects',
+    '`config [project] [field] [value]` — Update config (guided wizard if omitted)',
     '',
     '*Machine*',
-    '`/atc status` — Show machine status',
-    '`/atc models` — List available models',
-    '`/atc sessions` — List all Copilot CLI sessions',
-    '`/atc join [session-id]` — Join a session (picker if omitted)',
-    '`/atc help` — Show this help',
+    '`status` — Show machine status',
+    '`models` — List available models',
+    '`sessions` — List all Copilot CLI sessions',
+    '`join [session-id]` — Join a session (picker if omitted)',
+    '`menu` — Show interactive menu',
+    '`help` — Show this help',
     '',
-    '_Omit parameters for an interactive picker. In a project channel, commands apply to that project directly._',
+    '_Omit parameters for an interactive picker. You can also type naturally — e.g. "make a project called my-app"._',
   ].join('\n');
 
   return {
@@ -218,19 +219,19 @@ export function formatProjectHelp(projectName: string): MessageContent {
     `📖 *Project Commands* — \`${projectName}\``,
     '',
     '*Session*',
-    '`/atc status` — Project & session status',
-    '`/atc abort` — Abort the current session',
-    '`/atc sessions` — List all Copilot CLI sessions',
-    '`/atc join [session-id]` — Join a session (picker if omitted)',
-    '`/atc leave` — Detach without killing the session',
-    '`/atc history` — Show session history',
-    '`/atc diff` — Show git diff',
+    '`!status` — Project & session status',
+    '`!abort` — Abort the current session',
+    '`!sessions` — List all Copilot CLI sessions',
+    '`!join [session-id]` — Join a session (picker if omitted)',
+    '`!leave` — Detach without killing the session',
+    '`!history` — Show session history',
+    '`!diff` — Show git diff',
     '',
     '*Config*',
-    '`/atc model [name]` — Change model (picker if omitted)',
-    '`/atc agent [name]` — Change agent (prompts if omitted)',
-    '`/atc mode [normal|plan|autopilot]` — Change mode (picker if omitted)',
-    '`/atc help` — Show this help',
+    '`!model [name]` — Change model (picker if omitted)',
+    '`!agent [name]` — Change agent (prompts if omitted)',
+    '`!mode [normal|plan|autopilot]` — Change mode (picker if omitted)',
+    '`!help` — Show this help',
     '',
     '_Omit parameters for an interactive picker. Or just type a message to send a prompt to Copilot._',
   ].join('\n');
@@ -248,7 +249,52 @@ export function formatUnknownCommand(input: string, suggestions: string[]): Mess
   if (suggestions.length > 0) {
     text += `\nDid you mean: ${suggestions.map((s) => `\`${s}\``).join(', ')}?`;
   }
-  text += '\nType `/atc help` for a list of commands.';
+  text += '\nType `help` for a list of commands, or `menu` for clickable options.';
+  return {
+    text,
+    blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text } },
+    ],
+  };
+}
+
+export function formatMenu(machineName: string): MessageContent {
+  const text = `🛫 *Air Traffic — ${machineName}*\nWhat would you like to do?`;
+  return {
+    text,
+    blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text } },
+      {
+        type: 'actions',
+        elements: [
+          { type: 'button', text: { type: 'plain_text', text: '📦 Create Project', emoji: true }, action_id: 'menu_create', value: 'create' },
+          { type: 'button', text: { type: 'plain_text', text: '📋 List Projects', emoji: true }, action_id: 'menu_list', value: 'list' },
+          { type: 'button', text: { type: 'plain_text', text: '🗑️ Delete Project', emoji: true }, action_id: 'menu_delete', value: 'delete' },
+        ],
+      },
+      {
+        type: 'actions',
+        elements: [
+          { type: 'button', text: { type: 'plain_text', text: '📊 Status', emoji: true }, action_id: 'menu_status', value: 'status' },
+          { type: 'button', text: { type: 'plain_text', text: '🤖 Models', emoji: true }, action_id: 'menu_models', value: 'models' },
+          { type: 'button', text: { type: 'plain_text', text: '❓ Help', emoji: true }, action_id: 'menu_help', value: 'help' },
+        ],
+      },
+    ],
+  };
+}
+
+export function formatWelcome(machineName: string): MessageContent {
+  const text = [
+    `🛫 *Welcome to Air Traffic — ${machineName}!*`,
+    '',
+    'I orchestrate GitHub Copilot on this machine. You can:',
+    '• Type commands directly: `create my-app`, `status`, `list`',
+    '• Use natural language: _"make a project called api-server"_',
+    '• Type `menu` for clickable options',
+    '',
+    'In project channels, send messages as Copilot prompts or use `!` commands (`!model`, `!abort`).',
+  ].join('\n');
   return {
     text,
     blocks: [
