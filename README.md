@@ -10,13 +10,13 @@ Air Traffic runs as a daemon on your development machine, watches Slack channels
 
 ## Features
 
-### 🖥️ Multi-Machine Orchestration
+### 🖥️ Multi-Machine Support
 
-Run Air Traffic on every machine you work with — desktop, laptop, cloud VM, CI box — and control all of them from a single Slack workspace. Each machine registers with a unique name (`ATC_MACHINE_NAME`), and you target them by prefix (`desktop: create my-app`). Broadcast commands like `status` fan out to all machines. You manage your entire fleet from your phone.
+Run Air Traffic on every machine you work with — desktop, laptop, cloud VM, CI box. Each machine gets its own Slack app (created via `npx air-traffic init`), so events are routed directly with zero cross-daemon coordination. DM each bot to manage that machine's projects. You manage your entire fleet from your phone.
 
 ### 🔗 Session Sharing with Local Copilot CLI
 
-Air Traffic can join any existing Copilot CLI session running on your machine. Run `copilot` locally to start a session, then join it remotely with `/atc join <session-id>` — output streams to the Slack channel and you can continue prompting from your phone. Sessions are listed with `/atc sessions`, showing ID prefix, task summary, branch, working directory, and age. Prefix-matching means you only need to type the first few characters of the session ID.
+Air Traffic can join any existing Copilot CLI session running on your machine. Run `copilot` locally to start a session, then join it remotely with `join <session-id>` — output streams to the Slack channel and you can continue prompting from your phone. Sessions are listed with `sessions`, showing ID prefix, task summary, branch, working directory, and age. Prefix-matching means you only need to type the first few characters of the session ID.
 
 ### 📸 Screenshot Capture & Auto-Upload
 
@@ -36,11 +36,19 @@ Air Traffic integrates with Slack's `assistant.threads.setStatus` API to show li
 
 ### 💬 DM-Based Control
 
-You don't need a dedicated control channel — just DM the bot directly. All control commands (`create`, `list`, `config`, `sessions`, `join`, `status`, `models`) work in DMs, making it the easiest way to manage projects from mobile. Slash commands (`/atc create my-app`) also work in DMs.
+Just DM the bot directly — no dedicated control channel needed. All control commands (`create`, `list`, `config`, `sessions`, `join`, `status`, `models`, `menu`) work in DMs. You can also type naturally — "make a project called my-app" or "what's running?" — and the NL intent classifier routes to the right command. First-time DMs show an interactive welcome menu.
 
-### 🎛️ Interactive Pickers & Wizards
+### 🧠 Natural Language Commands
 
-Commands with optional parameters show interactive dropdowns when arguments are omitted. `/atc model` shows a picker of available models with the current one marked. `/atc mode` displays all modes with descriptions. `/atc config` walks you through a guided wizard: pick project → pick field → pick value. `/atc join` without an ID shows a session picker.
+Air Traffic includes a local NL intent classifier that maps natural phrases to commands — no LLM needed, zero latency. Examples:
+- "make a project called api-server" → `create api-server`
+- "what's running?" → `status`
+- "show me my projects" → `list`
+- "switch to gpt-5" → `model gpt-5`
+
+### 🎛️ Interactive Menu & Pickers
+
+Type `menu` (or tap a menu button) to get an interactive Block Kit menu with buttons for all common actions. Commands with optional parameters show interactive dropdowns when arguments are omitted — `model` shows a picker of available models, `mode` displays all modes with descriptions, `config` walks through a guided wizard, `join` without an ID shows a session picker.
 
 ### 🔐 Granular Permission Controls
 
@@ -54,11 +62,11 @@ Three operating modes control how Copilot handles prompts:
 - **Plan** — Prepends `[[PLAN]]` to prompts, making Copilot generate a detailed plan for review before implementing
 - **Autopilot** — Runs without confirmation prompts, suitable for well-defined tasks
 
-Switch modes with `/atc mode` or `!mode` in a project channel.
+Switch modes with `mode` in a DM or `!mode` in a project channel.
 
 ### 🧠 Session Management
 
-List all Copilot CLI sessions on the machine with `/atc sessions` — see managed vs. unmanaged sessions, their working directories, branches, and ages. Join any session by ID prefix. When joining from a DM, the system auto-creates a project and Slack channel if needed, deriving the project name from the session's working directory.
+List all Copilot CLI sessions on the machine with `sessions` — see managed vs. unmanaged sessions, their working directories, branches, and ages. Join any session by ID prefix. When joining from a DM, the system auto-creates a project and Slack channel if needed, deriving the project name from the session's working directory.
 
 ### 🌐 Web Console
 
@@ -78,7 +86,7 @@ Copilot outputs standard Markdown, but Slack uses its own mrkdwn format. Air Tra
 
 ### 🏗️ Project Isolation
 
-Each project gets its own Slack channel (`#atc-<machine>-<project>`), working directory, Copilot session, model selection, agent type, permission policy, and operating mode. Projects can be cloned from a repo (`/atc create my-app --from https://github.com/user/repo`) or created as empty directories.
+Each project gets its own Slack channel (`#atc-<machine>-<project>`), working directory, Copilot session, model selection, agent type, permission policy, and operating mode. Projects can be cloned from a repo (`create my-app --from https://github.com/user/repo`) or created as empty directories.
 
 ### 🔌 Messaging Abstraction
 
@@ -93,7 +101,24 @@ The core logic is platform-agnostic. All platform communication goes through the
 
 ## Slack App Setup
 
-### Option A: From manifest (recommended)
+### Option A: Setup wizard (recommended)
+
+The `init` command walks you through creating a Slack app for your machine:
+
+```bash
+npx air-traffic init
+```
+
+It will:
+1. Ask for your machine name (e.g. `desktop`, `laptop`)
+2. Generate a customized Slack app manifest
+3. Guide you through creating the app at [api.slack.com/apps](https://api.slack.com/apps)
+4. Prompt you for the three required tokens
+5. Write a `.env` file with your configuration
+
+> **Multi-machine setup**: Run `npx air-traffic init` on each machine with a different machine name. Each machine gets its own Slack app — no conflicts, no routing issues.
+
+### Option B: From manifest (manual)
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From an app manifest**
 2. Select your workspace
@@ -105,7 +130,7 @@ The core logic is platform-agnostic. All platform communication goes through the
    - **OAuth & Permissions** → copy **Bot User OAuth Token** → `SLACK_BOT_TOKEN` (starts with `xoxb-`)
    - **Basic Information** → **App-Level Tokens** → generate one with `connections:write` scope → `SLACK_APP_TOKEN` (starts with `xapp-`)
 
-### Option B: Manual setup
+### Option C: Manual setup
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**. Give it a name (e.g. "Air Traffic") and select your workspace.
 
@@ -114,13 +139,14 @@ The core logic is platform-agnostic. All platform communication goes through the
    - `chat:write`, `chat:write.public`
    - `reactions:read`, `reactions:write`
    - `groups:read`, `groups:history`, `groups:write`
-   - `users:read`, `im:history`
+   - `users:read`, `im:history`, `im:read`, `im:write`
 
 3. **Socket Mode** → **Enable Socket Mode** → Create an **App-Level Token** with the `connections:write` scope. Copy the token — this is your `SLACK_APP_TOKEN` (starts with `xapp-`).
 
 4. **Event Subscriptions** → **Enable Events** → Under **Subscribe to bot events**, add:
    - `message.channels`
    - `message.groups`
+   - `message.im`
 
 5. **Interactivity & Shortcuts** → **Enable Interactivity** (required for Block Kit button actions).
 
@@ -250,46 +276,48 @@ Open `http://localhost:8089` to access the Console.
 
 ## Multi-Machine Setup
 
-1. Deploy Air Traffic to each machine you want to control.
-2. Set a unique `ATC_MACHINE_NAME` on each (e.g. `desktop`, `laptop`, `cloud-dev`).
-3. All machines share the same Slack app credentials and connect to the same workspace.
-4. Target a specific machine by prefixing commands with its name:
-   ```
-   desktop: create my-app
-   laptop: status
-   ```
-5. Broadcast commands (e.g. `status`, `machines`) are received by all machines.
+1. Run `npx air-traffic init` on each machine — give each a unique name (e.g. `desktop`, `laptop`, `cloud-dev`).
+2. Each machine gets its own Slack app with a name like "ATC Desktop", "ATC Laptop", etc.
+3. DM each bot to control that machine's projects.
+4. No shared credentials, no routing conflicts — each app is independent.
 
 ## Command Reference
 
-All commands use the `/atc` slash command. The behavior depends on which channel you're in.
+Commands are sent via DM to the bot or with `!` prefix in project channels. You can also type naturally — the NL intent classifier handles common phrases.
 
-### From Any Channel (control commands)
+### DM Commands (control)
 
 | Command | Description | Example |
 |---|---|---|
-| `/atc <machine>: create <name> [--from <url>]` | Create a new project (optionally clone a repo) | `/atc desktop: create my-app --from https://github.com/user/repo` |
-| `/atc <machine>: delete <name>` | Delete a project and archive its channel | `/atc desktop: delete my-app` |
-| `/atc <machine>: list` | List all projects on a machine | `/atc desktop: list` |
-| `/atc <machine>: config <project> <field> <value>` | Update project config | `/atc desktop: config my-app model gpt-5` |
-| `/atc <machine>: status` | Show machine status and active sessions | `/atc desktop: status` |
-| `/atc <machine>: models` | List available Copilot models | `/atc desktop: models` |
-| `/atc status` | Broadcast — all machines report status | `/atc status` |
-| `/atc machines` | Broadcast — all machines report presence | `/atc machines` |
+| `create <name> [--from <url>]` | Create a new project (optionally clone a repo) | `create my-app --from https://github.com/user/repo` |
+| `delete [name]` | Delete a project (picker if omitted) | `delete my-app` |
+| `list` | List all projects | `list` |
+| `config [project] [field] [value]` | Update project config (guided wizard if omitted) | `config my-app model gpt-5` |
+| `status` | Show machine status and active sessions | `status` |
+| `models` | List available Copilot models | `models` |
+| `sessions` | List all Copilot CLI sessions | `sessions` |
+| `join [session-id]` | Join a session (picker if omitted) | `join a1b2` |
+| `menu` | Show interactive menu with action buttons | `menu` |
+| `help` | Show command reference | `help` |
 
-### From a Project Channel (`#atc-<machine>-<project>`)
+### Project Channel Commands (`#atc-<machine>-<project>`)
 
-In project channels, prompts are sent as regular messages. Use `/atc` for commands:
+In project channels, regular messages are sent as prompts to Copilot. Use `!` prefix for commands:
 
 | Command | Description | Example |
 |---|---|---|
 | *(any text)* | Send as a prompt to the Copilot agent | `Add user authentication with JWT` |
-| `/atc model <model>` | Change the model for this project | `/atc model gpt-5` |
-| `/atc agent <agent-name>` | Set the agent type | `/atc agent code-review` |
-| `/atc status` | Show project status and session state | `/atc status` |
-| `/atc abort` | Abort the current agent session | `/atc abort` |
-| `/atc diff` | Show `git diff` of the project directory | `/atc diff` |
-| `/atc history` | Show session history (placeholder) | `/atc history` |
+| `!model [name]` | Change the model (picker if omitted) | `!model gpt-5` |
+| `!agent [name]` | Set the agent type | `!agent code-review` |
+| `!mode [mode]` | Set operating mode (picker if omitted) | `!mode autopilot` |
+| `!status` | Show project status and session state | `!status` |
+| `!abort` | Abort the current agent session | `!abort` |
+| `!diff` | Show `git diff` of the project directory | `!diff` |
+| `!history` | Show session message history | `!history` |
+| `!sessions` | List all Copilot CLI sessions | `!sessions` |
+| `!join [id]` | Join a session (picker if omitted) | `!join a1b2` |
+| `!leave` | Detach from session without killing it | `!leave` |
+| `!help` | Show project command reference | `!help` |
 
 ## Architecture
 
@@ -341,6 +369,9 @@ src/
 ├── config.ts                  # Env var loading + Zod validation
 ├── daemon.ts                  # AirTrafficDaemon — main command router
 ├── index.ts                   # Entry point — wires config, adapter, daemon
+├── cli/
+│   ├── init.ts                # Setup wizard (npx air-traffic init)
+│   └── manifest-template.ts   # Generates per-machine Slack app manifest
 ├── copilot/
 │   ├── agent-session.ts       # Per-project Copilot session with streaming
 │   ├── session-orchestrator.ts# CopilotClient lifecycle + session pool
@@ -350,10 +381,11 @@ src/
 │   ├── types.ts               # Platform-agnostic interfaces
 │   ├── adapter.ts             # BaseMessagingAdapter (shared event dispatch)
 │   ├── in-memory-adapter.ts   # Test double
+│   ├── intent.ts              # NL intent classifier (synonym/keyword map)
 │   └── slack/
 │       ├── slack-adapter.ts   # Slack Bolt integration
 │       ├── commands.ts        # Message parsing (control + project channels)
-│       ├── formatters.ts      # Block Kit formatting
+│       ├── formatters.ts      # Block Kit formatting (help, menu, welcome)
 │       └── presence.ts        # Heartbeat manager
 ├── projects/
 │   ├── types.ts               # ProjectConfig, PermissionPolicy
