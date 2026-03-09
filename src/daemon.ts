@@ -57,6 +57,7 @@ export class WingmanDaemon {
       projectManager: this.projectManager,
       orchestrator: this.orchestrator,
       modelRegistry: this.modelRegistry,
+      permissionManager: this.permissionManager,
       machineName: this.config.wingman.machineName,
       adapter: this.adapter,
       config: { webPort: this.config.wingman.webPort },
@@ -118,6 +119,12 @@ export class WingmanDaemon {
           break;
         case 'config':
           await this.cmdUpdateConfig(cmd);
+          break;
+        case 'sessions':
+          await this.cmdListSessions(cmd.channelId);
+          break;
+        case 'join':
+          await this.cmdJoinFromControl(cmd);
           break;
         case 'status':
           await this.postMachineStatus(cmd.channelId);
@@ -239,6 +246,15 @@ export class WingmanDaemon {
           break;
         case 'mode':
           await this.cmdSetMode(projectName, args, msg);
+          break;
+        case 'sessions':
+          await this.cmdListSessions(msg.channelId);
+          break;
+        case 'join':
+          await this.cmdJoinSession(projectName, args, msg);
+          break;
+        case 'leave':
+          await this.cmdLeaveSession(projectName, msg);
           break;
         case 'history':
           await this.cmdHistory(projectName, msg);
@@ -456,6 +472,258 @@ export class WingmanDaemon {
   private async cmdHistory(_projectName: string, msg: IncomingMessage): Promise<void> {
     // History retrieval is a placeholder — session history is not persisted yet
     await this.adapter.sendMessage(msg.channelId, { text: '_Session history not yet available._' });
+  }
+
+  private async cmdListSessions(channelId: string): Promise<void> {
+    // Build project path map for CWD matching
+    const projects = await this.projectManager.listProjects();
+    const projectPaths = new Map(projects.map((p) => [p.name, p.path]));
+    const sessions = await this.orchestrator.listAllSessions(projectPaths);
+
+    if (sessions.length === 0) {
+      await this.adapter.sendMessage(channelId, { text: '📋 No Copilot sessions found on this machine.' });
+      return;
+    }
+
+    // Sort: matching projects first, then by modifiedTime desc
+    sessions.sort((a, b) => {
+      if (a.matchingProject && !b.matchingProject) return -1;
+      if (!a.matchingProject && b.matchingProject) return 1;
+      return b.modifiedTime.getTime() - a.modifiedTime.getTime();
+    });
+
+    const lines = sessions.map((s) => {
+      const age = this.formatAge(s.modifiedTime);
+      const flags: string[] = [];
+      if (s.managed) flags.push('🟢 managed');
+      if (s.matchingProject) flags.push(`⭐ ${s.matchingProject}`);
+      if (s.isRemote) flags.push('☁️ remote');
+      const flagStr = flags.length > 0 ? ` [${flags.join(', ')}]` : '';
+      const name = s.summary ? ` — ${s.summary.slice(0, 80)}` : '';
+      const cwd = s.context?.cwd ? ` 📁 \`${s.context.cwd}\`` : '';
+      const branch = s.context?.branch ? ` 🔀 ${s.context.branch}` : '';
+      return `• \`${s.sessionId.slice(0, 8)}\`${name}${cwd}${branch} (${age})${flagStr}`;
+    });
+
+    await this.adapter.sendMessage(channelId, {
+      text: `📋 *Copilot Sessions* (${sessions.length}):\n${lines.join('\n')}\n\n_Use \`/wm join <session-id>\` to join one._`,
+    });
+  }
+
+  /** Fetch available (unmanaged) sessions and return them with labels. */
+  private async getAvailableSessions() {
+    const projects = await this.projectManager.listProjects();
+    const projectPaths = new Map(projects.map((p) => [p.name, p.path]));
+    const allSessions = await this.orchestrator.listAllSessions(projectPaths);
+    return { allSessions, projects, projectPaths };
+  }
+
+  /** Present a dropdown session picker when no session ID is provided. */
+  private async showSessionPicker(channelId: string, threadId: string | undefined): Promise<void> {
+    const { allSessions } = await this.getAvailableSessions();
+    const unmanaged = allSessions.filter((s) => !s.managed);
+
+    if (unmanaged.length === 0) {
+      await this.adapter.sendMessage(channelId, { text: '📋 No unmanaged sessions available to join.' });
+      return;
+    }
+
+    // Sort by modifiedTime desc
+    unmanaged.sort((a, b) => b.modifiedTime.getTime() - a.modifiedTime.getTime());
+
+    const choices = unmanaged.slice(0, 20).map((s) => {
+      const age = this.formatAge(s.modifiedTime);
+      const name = s.summary ? ` ${s.summary.slice(0, 50)}` : '';
+      const branch = s.context?.branch ? ` 🔀${s.context.branch}` : '';
+      return `${s.sessionId.slice(0, 8)} —${name}${branch} (${age})`;
+    });
+
+    await this.adapter.askQuestion(channelId, threadId ?? channelId, {
+      question: '🔗 Which session would you like to join?',
+      choices,
+      allowFreeform: true,
+    }).then(async (response) => {
+      // Extract session ID prefix from the chosen option
+      const chosen = response.answer.trim().replace(/`/g, '');
+      const prefix = chosen.split(/[\s—-]/)[0]?.trim();
+      if (prefix) {
+        // Re-invoke join with the selected prefix
+        const fakeMsg: IncomingMessage = {
+          channelId,
+          channelName: '',
+          userId: '',
+          text: prefix,
+          messageId: '',
+          timestamp: new Date(),
+        };
+        await this.resolveAndJoinSession(prefix, undefined, fakeMsg);
+      }
+    }).catch(() => {});
+  }
+
+  /** Core logic: resolve a session ID prefix, find/create the project, and join. */
+  private async resolveAndJoinSession(
+    sessionIdPrefix: string,
+    projectName: string | undefined,
+    msg: IncomingMessage,
+  ): Promise<void> {
+    const { allSessions } = await this.getAvailableSessions();
+    const matches = allSessions.filter((s) => s.sessionId.startsWith(sessionIdPrefix));
+
+    if (matches.length === 0) {
+      await this.adapter.sendMessage(msg.channelId, {
+        text: `❌ No session found matching \`${sessionIdPrefix}\`. Use \`/wm sessions\` to list.`,
+      });
+      return;
+    }
+    if (matches.length > 1) {
+      await this.adapter.sendMessage(msg.channelId, {
+        text: `❌ Ambiguous — \`${sessionIdPrefix}\` matches ${matches.length} sessions. Provide more characters.`,
+      });
+      return;
+    }
+
+    const targetSession = matches[0];
+    if (targetSession.managed) {
+      await this.adapter.sendMessage(msg.channelId, {
+        text: `⚠️ Session \`${targetSession.sessionId.slice(0, 8)}\` is already managed by Wingman.`,
+      });
+      return;
+    }
+
+    // Determine or create the project
+    let resolvedProjectName = projectName;
+    if (!resolvedProjectName) {
+      // Try to match by CWD
+      if (targetSession.matchingProject) {
+        resolvedProjectName = targetSession.matchingProject;
+      } else {
+        // Derive a project name from the session's cwd or summary
+        const cwd = targetSession.context?.cwd;
+        const dirName = cwd ? path.basename(cwd).toLowerCase().replace(/[^a-z0-9-]/g, '-') : null;
+        resolvedProjectName = dirName && dirName.length > 0 ? dirName : `session-${targetSession.sessionId.slice(0, 8)}`;
+
+        // Ensure name starts with a letter (project name validation)
+        if (resolvedProjectName && !/^[a-z]/.test(resolvedProjectName)) {
+          resolvedProjectName = `p-${resolvedProjectName}`;
+        }
+
+        // Create the project if it doesn't exist
+        try {
+          await this.projectManager.getProject(resolvedProjectName);
+        } catch {
+          const projectPath = targetSession.context?.cwd ?? path.join(this.config.wingman.projectsDir, resolvedProjectName);
+          await this.projectManager.createProject(resolvedProjectName, this.config.wingman.machineName, undefined, projectPath);
+          await this.adapter.sendMessage(msg.channelId, {
+            text: `📁 Created project *${resolvedProjectName}* at \`${projectPath}\``,
+          });
+        }
+      }
+    }
+
+    // Disconnect any existing session for this project
+    const existingSession = this.orchestrator.getSession(resolvedProjectName);
+    if (existingSession) {
+      await existingSession.disconnect();
+      this.orchestrator.removeSession(resolvedProjectName);
+    }
+
+    const project = await this.projectManager.getProject(resolvedProjectName);
+    const projectChannelId = project.channelId;
+    const client = await this.orchestrator.ensureClient();
+    const agentSession = new AgentSession(client, this.adapter, project, this.permissionManager);
+
+    const sessionLabel = targetSession.summary
+      ? `\`${targetSession.sessionId.slice(0, 8)}\` (${targetSession.summary.slice(0, 60)})`
+      : `\`${targetSession.sessionId.slice(0, 8)}\``;
+
+    // Use the project channel for session output, not the control channel
+    const summary = await agentSession.resumeExisting(
+      targetSession.sessionId,
+      projectChannelId,
+      msg.userId,
+    );
+
+    this.orchestrator.registerSession(resolvedProjectName, agentSession);
+    if (this.sessionBridge) {
+      this.sessionBridge.bridge(resolvedProjectName, agentSession);
+    }
+
+    // Post confirmation to the project channel
+    await this.adapter.sendMessage(projectChannelId, {
+      text: `✅ Joined session ${sessionLabel}\n\n${summary}`,
+    });
+
+    // If invoked from a different channel (e.g. control), post a link there
+    if (msg.channelId !== projectChannelId) {
+      await this.adapter.sendMessage(msg.channelId, {
+        text: `✅ Joined session ${sessionLabel} → project *${resolvedProjectName}* — head to <#${projectChannelId}> to interact.`,
+      });
+    }
+  }
+
+  private async cmdJoinSession(projectName: string, args: string[], msg: IncomingMessage): Promise<void> {
+    // Strip backtick formatting from session ID
+    const rawId = args[0]?.replace(/`/g, '').trim();
+
+    if (!rawId) {
+      // No ID provided — show dropdown picker
+      await this.showSessionPicker(msg.channelId, msg.threadId);
+      return;
+    }
+
+    await this.resolveAndJoinSession(rawId, projectName, msg);
+  }
+
+  private async cmdJoinFromControl(cmd: IncomingCommand): Promise<void> {
+    // Strip backtick formatting from session ID
+    const rawId = cmd.args[0]?.replace(/`/g, '').trim();
+    const msg: IncomingMessage = {
+      channelId: cmd.channelId,
+      channelName: cmd.channelName,
+      userId: cmd.userId,
+      text: cmd.rawText,
+      messageId: cmd.messageId,
+      timestamp: new Date(),
+    };
+
+    if (!rawId) {
+      await this.showSessionPicker(cmd.channelId, undefined);
+      return;
+    }
+
+    // From control channel — project name will be auto-derived
+    await this.resolveAndJoinSession(rawId, undefined, msg);
+  }
+
+  private async cmdLeaveSession(projectName: string, msg: IncomingMessage): Promise<void> {
+    const session = this.orchestrator.getSession(projectName);
+    if (!session) {
+      await this.adapter.sendMessage(msg.channelId, { text: '⚠️ No active session for this project.' });
+      return;
+    }
+
+    // Disconnect from the session (preserves session state on disk for later resume)
+    await session.disconnect();
+    this.orchestrator.removeSession(projectName);
+    if (this.sessionBridge) {
+      this.sessionBridge.unbridge(projectName);
+    }
+
+    await this.adapter.sendMessage(msg.channelId, {
+      text: `👋 Left session for *${projectName}*. The Copilot session is still alive and can be rejoined later.`,
+    });
+  }
+
+  private formatAge(date: Date): string {
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
   }
 
   // --- Status helpers ---

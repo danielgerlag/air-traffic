@@ -63,17 +63,16 @@ export class AgentSession {
     private permissionManager: PermissionManager,
   ) {}
 
-  async initialize(model?: string): Promise<void> {
-    const logger = getLogger();
+  /** Build the shared session config used for both new and resumed sessions. */
+  private buildSessionConfig(model?: string) {
     const effectiveModel = model ?? this.project.model;
-
-    this.session = await this.client.createSession({
+    return {
       model: effectiveModel,
-      systemMessage: { mode: 'append', content: buildSystemPreamble(this.project) },
+      systemMessage: { mode: 'append' as const, content: buildSystemPreamble(this.project) },
       streaming: true,
       workingDirectory: this.project.path,
       onPermissionRequest: approveAll,
-      onUserInputRequest: async (request) => {
+      onUserInputRequest: async (request: { question: string; choices?: string[]; allowFreeform?: boolean }) => {
         if (!this.currentThreadId) {
           return { answer: '', wasFreeform: true };
         }
@@ -92,7 +91,7 @@ export class AgentSession {
         return { answer: response.answer, wasFreeform: response.wasFreeform };
       },
       hooks: {
-        onPreToolUse: async (input) => {
+        onPreToolUse: async (input: { toolName: string; toolArgs: unknown }) => {
           const toolName = input.toolName;
           getLogger().debug(`onPreToolUse called: ${toolName}`, { args: input.toolArgs });
 
@@ -103,7 +102,6 @@ export class AgentSession {
             if (intent && this.currentThreadId) {
               this.events.emit('intent', { intent });
               const text = `💭 \`${intent}\``;
-              // Delete the previous intent message and post a fresh one
               if (this.intentRef) {
                 this.messaging.deleteMessage(this.intentRef).catch(() => {});
                 this.intentRef = null;
@@ -164,7 +162,6 @@ export class AgentSession {
             );
             this.events.emit('permission_response', { toolName, category, decision });
             if (decision === 'always_allow') {
-              // Update in-memory permissions so future calls in this session auto-approve
               (this.project.permissions as unknown as Record<string, string>)[category] = 'auto';
               this.events.emit('permissions_updated', {
                 projectName: this.project.name,
@@ -179,7 +176,7 @@ export class AgentSession {
           }
           return { permissionDecision: 'allow' as const };
         },
-        onPostToolUse: async (input) => {
+        onPostToolUse: async (input: { toolName: string; toolArgs: unknown; toolResult?: { textResultForLlm?: string } }) => {
           const toolName = input.toolName;
           const args = input.toolArgs as Record<string, unknown>;
 
@@ -189,7 +186,6 @@ export class AgentSession {
             const description = this.activeSubAgent;
             this.activeSubAgent = null;
             if (result && this.currentThreadId) {
-              // Truncate to a reasonable preview length for Slack
               const preview = result.length > 3000 ? result.slice(0, 3000) + '\n…(truncated)' : result;
               const formatted = markdownToMrkdwn(preview);
               await this.messaging.sendMessage(this.project.channelId, {
@@ -202,7 +198,6 @@ export class AgentSession {
           // Auto-upload image/file artifacts to the messaging channel
           const filePath = (args.path ?? args.filename ?? args.file_path ?? '') as string;
 
-          // Direct file creation tools — check args for the file path
           if (
             toolName === 'create' || toolName === 'create_file' ||
             toolName === 'playwright-browser_take_screenshot'
@@ -212,7 +207,7 @@ export class AgentSession {
             }
           }
 
-          // Scan tool output for file paths with uploadable extensions (e.g. shell commands that save screenshots)
+          // Scan tool output for file paths with uploadable extensions
           const resultText = input.toolResult?.textResultForLlm ?? '';
           if (resultText && this.currentThreadId) {
             const filePathPattern = /(?:[A-Z]:\\[\w\\.-]+|\/[\w/.-]+)\.(?:png|jpg|jpeg|gif|svg|webp|pdf)/gi;
@@ -230,10 +225,55 @@ export class AgentSession {
           }
         },
       },
-    });
+    };
+  }
 
+  async initialize(model?: string): Promise<void> {
+    const logger = getLogger();
+    const config = this.buildSessionConfig(model);
+    this.session = await this.client.createSession(config);
     this.setupEventListeners();
-    logger.info(`Session initialized for project ${this.project.name} with model ${effectiveModel}`);
+    logger.info(`Session initialized for project ${this.project.name} with model ${config.model}`);
+  }
+
+  /** Resume an existing Copilot CLI session by ID. */
+  async resumeExisting(sessionId: string, threadId: string, userId?: string): Promise<string> {
+    const logger = getLogger();
+    const config = this.buildSessionConfig();
+    this.session = await this.client.resumeSession(sessionId, config);
+    this.setupEventListeners();
+    this.currentThreadId = threadId;
+    this.currentUserId = userId ?? null;
+    this.idle = true;
+
+    // Replay conversation history as a summary
+    let summary = '';
+    try {
+      const messages = await this.session.getMessages();
+      const turns: string[] = [];
+      for (const msg of messages) {
+        if (msg.type === 'user.message') {
+          const text = msg.data?.content ?? '';
+          if (text) turns.push(`👤 ${text.slice(0, 200)}`);
+        } else if (msg.type === 'assistant.message') {
+          const text = msg.data?.content ?? '';
+          if (text) turns.push(`🤖 ${text.slice(0, 200)}`);
+        }
+      }
+      if (turns.length > 0) {
+        // Show last 10 turns max
+        const recent = turns.slice(-10);
+        summary = `📜 *Session history* (${messages.length} events, showing last ${recent.length} turns):\n${recent.join('\n')}`;
+      } else {
+        summary = '📜 Session has no conversation history yet.';
+      }
+    } catch (err) {
+      logger.warn('Failed to retrieve session history', { error: err });
+      summary = '📜 Could not retrieve session history.';
+    }
+
+    logger.info(`Resumed session ${sessionId} for project ${this.project.name}`);
+    return summary;
   }
 
   private setupEventListeners(): void {
@@ -354,6 +394,11 @@ export class AgentSession {
 
   isIdle(): boolean {
     return this.idle;
+  }
+
+  /** Return the underlying SDK session ID, if initialized. */
+  getSessionId(): string | null {
+    return this.session?.sessionId ?? null;
   }
 
   /** Try to upload a file to the messaging channel if it has an uploadable extension. */

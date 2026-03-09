@@ -49,6 +49,22 @@ export interface FileListing {
   entries: FileEntry[]
 }
 
+export interface CopilotSessionInfo {
+  sessionId: string
+  startTime: string
+  modifiedTime: string
+  summary?: string
+  isRemote: boolean
+  managed: boolean
+  matchingProject?: string
+  context?: {
+    cwd: string
+    gitRoot?: string
+    repository?: string
+    branch?: string
+  }
+}
+
 export const api = {
   getStatus: () => request<MachineStatus>('/status'),
   getProjects: () => request<ProjectInfo[]>('/projects'),
@@ -69,4 +85,12 @@ export const api = {
   getGitInfo: (name: string) => request<GitInfo>(`/projects/${name}/git`),
   getFiles: (name: string, dir?: string) =>
     request<FileListing>(`/projects/${name}/files${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),
+  getSessions: () => request<CopilotSessionInfo[]>('/sessions'),
+  joinSession: (projectName: string, sessionId: string) =>
+    request<{ success: boolean; sessionId: string; summary: string }>(`/projects/${projectName}/join`, {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    }),
+  leaveSession: (projectName: string) =>
+    request<{ success: boolean }>(`/projects/${projectName}/leave`, { method: 'POST' }),
 }

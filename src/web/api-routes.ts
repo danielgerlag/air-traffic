@@ -198,5 +198,75 @@ export function registerApiRoutes(
     }
   });
 
+  // GET /api/sessions — list all Copilot CLI sessions
+  router.get('/sessions', async (_req, res) => {
+    try {
+      const projects = await deps.projectManager.listProjects();
+      const projectPaths = new Map(projects.map((p) => [p.name, p.path]));
+      const sessions = await deps.orchestrator.listAllSessions(projectPaths);
+      res.json(sessions);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/projects/:name/join  { sessionId: string }
+  router.post('/projects/:name/join', async (req, res) => {
+    try {
+      const { sessionId } = req.body as { sessionId: string };
+      if (!sessionId) {
+        res.status(400).json({ error: 'sessionId is required' });
+        return;
+      }
+
+      const projectName = req.params.name;
+      const project = await deps.projectManager.getProject(projectName);
+
+      // Disconnect existing session
+      const existing = deps.orchestrator.getSession(projectName);
+      if (existing) {
+        await existing.disconnect();
+        deps.orchestrator.removeSession(projectName);
+      }
+
+      const { AgentSession } = await import('../copilot/agent-session.js');
+      const client = await deps.orchestrator.ensureClient();
+      const agentSession = new AgentSession(
+        client,
+        deps.adapter,
+        project,
+        deps.permissionManager,
+      );
+
+      const summary = await agentSession.resumeExisting(sessionId, project.channelId);
+      deps.orchestrator.registerSession(projectName, agentSession);
+
+      res.json({ success: true, sessionId, summary });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: message });
+    }
+  });
+
+  // POST /api/projects/:name/leave
+  router.post('/projects/:name/leave', async (req, res) => {
+    try {
+      const projectName = req.params.name;
+      const session = deps.orchestrator.getSession(projectName);
+      if (!session) {
+        res.status(404).json({ error: 'No active session for this project' });
+        return;
+      }
+
+      await session.disconnect();
+      deps.orchestrator.removeSession(projectName);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
   app.use('/api', router);
 }

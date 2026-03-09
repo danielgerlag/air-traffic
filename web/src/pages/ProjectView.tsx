@@ -7,6 +7,7 @@ import { SessionTerminal } from '../components/SessionTerminal'
 import { PromptInput } from '../components/PromptInput'
 import { ConfigPanel } from '../components/ConfigPanel'
 import { FileBrowser } from '../components/FileBrowser'
+import { SessionPicker } from '../components/SessionPicker'
 import { ArrowLeft } from 'lucide-react'
 
 export function ProjectView() {
@@ -60,6 +61,12 @@ export function ProjectView() {
               )}
             </>
           )}
+        </div>
+        <div className="ml-auto">
+          <SessionPicker
+            projectName={name}
+            onJoined={() => api.getProject(name).then(setProject).catch(console.error)}
+          />
         </div>
       </div>
 

@@ -67,7 +67,7 @@ export interface SlackAdapterConfig {
   questionTimeoutMs?: number;
 }
 
-const CONTROL_CHANNEL_NAME = 'wingman-control';
+const CONTROL_CHANNEL_PREFIX = 'wm-';
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 export class SlackAdapter extends BaseMessagingAdapter {
@@ -277,6 +277,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
   }
 
   private async findOrCreateControlChannel(): Promise<ChannelInfo> {
+    const controlChannelName = `${CONTROL_CHANNEL_PREFIX}${this.machineName}-control`;
     // Search existing channels
     let cursor: string | undefined;
     do {
@@ -286,7 +287,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
         cursor,
       });
       for (const ch of result.channels ?? []) {
-        if (ch.name === CONTROL_CHANNEL_NAME) {
+        if (ch.name === controlChannelName) {
           return { id: ch.id!, name: ch.name! };
         }
       }
@@ -295,7 +296,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
 
     // Not found — create it
     const result = await this.client.conversations.create({
-      name: CONTROL_CHANNEL_NAME,
+      name: controlChannelName,
       is_private: false,
     });
     const channel = result.channel!;
@@ -334,7 +335,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
         const cmdName = tokens[0]?.toLowerCase();
         if (!cmdName) return;
 
-        const projectCommands = ['status', 'abort', 'diff', 'model', 'agent', 'mode', 'history'];
+        const projectCommands = ['status', 'abort', 'diff', 'model', 'agent', 'mode', 'history', 'sessions', 'join', 'leave'];
         if (!projectCommands.includes(cmdName)) {
           await this.sendMessage(channelId, formatUnknownCommand(cmdName, suggestCommands(cmdName, projectCommands)));
           return;
@@ -356,7 +357,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
         // Control channel or any other channel: parse as control command
         const parsed = parseControlChannelMessage(text);
         if (!parsed) {
-          const controlCommands = ['create', 'delete', 'list', 'config', 'status', 'models'];
+          const controlCommands = ['create', 'delete', 'list', 'config', 'status', 'models', 'sessions', 'join'];
           const firstWord = text.split(/\s+/)[0]?.toLowerCase() ?? '';
           await this.sendMessage(channelId, formatUnknownCommand(firstWord, suggestCommands(firstWord, controlCommands)));
           return;
@@ -426,7 +427,9 @@ export class SlackAdapter extends BaseMessagingAdapter {
         this.handlePossibleQuestionReply(incoming);
       }
 
-      if (channelName === CONTROL_CHANNEL_NAME) {
+      const isControlChannel = this.controlChannel && msg.channel === this.controlChannel.id;
+
+      if (isControlChannel) {
         await this.handleControlMessage(incoming);
       } else if (isProjectChannel(channelName, this.machineName)) {
         await this.handleProjectMessage(incoming);

@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { ProjectManager } from '../projects/project-manager.js';
 import type { SessionOrchestrator } from '../copilot/session-orchestrator.js';
 import type { ModelRegistry } from '../copilot/model-registry.js';
+import type { PermissionManager } from '../copilot/permission-manager.js';
 import type { MessagingAdapter } from '../messaging/types.js';
 import { getLogger } from '../utils/logger.js';
 import { registerApiRoutes } from './api-routes.js';
@@ -15,6 +16,7 @@ export interface WebServerDeps {
   projectManager: ProjectManager;
   orchestrator: SessionOrchestrator;
   modelRegistry: ModelRegistry;
+  permissionManager: PermissionManager;
   machineName: string;
   adapter: MessagingAdapter;
   config: { webPort: number };
