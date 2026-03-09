@@ -112,9 +112,9 @@ export function formatQuestion(
           options: choices.map((choice, i) => ({
             text: {
               type: 'plain_text',
-              text: choice.length > 148 ? choice.slice(0, 145) + '…' : choice,
+              text: choice.length > 75 ? choice.slice(0, 72) + '…' : choice,
             },
-            value: choice.length > 73 ? `idx_${i}` : choice,
+            value: choice.length > 75 ? `idx_${i}` : choice,
           })),
         },
       ],
