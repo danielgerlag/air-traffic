@@ -50,7 +50,7 @@ export class InMemoryMessagingAdapter extends BaseMessagingAdapter {
   readonly askedPermissions: AskedPermission[] = [];
   readonly reportedStatuses: MachineStatus[] = [];
   readonly updatedMessages: Array<{ ref: MessageRef; content: MessageContent }> = [];
-  readonly sentFiles: Array<{ channelId: string; filePath: string; filename: string; comment?: string }> = [];
+  readonly sentFiles: Array<{ channelId: string; filePath: string; filename: string; comment?: string; threadId?: string }> = [];
 
   private connected = false;
   private presenceReported = false;

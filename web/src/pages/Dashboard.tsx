@@ -187,7 +187,7 @@ export function Dashboard() {
       {/* Create Project Dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)}>
         <DialogTitle>Create Project</DialogTitle>
-        <DialogDescription>Set up a new project for Wingman to manage.</DialogDescription>
+        <DialogDescription>Set up a new project for Air Traffic to manage.</DialogDescription>
 
         <div className="mt-4 space-y-4">
           <div>

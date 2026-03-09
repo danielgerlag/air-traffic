@@ -167,6 +167,9 @@ export class AgentSession {
             const args = input.toolArgs as Record<string, unknown>;
             const label = toolCallLabel(toolName, args);
             this.toolCallLog.push({ name: toolName, label, done: false });
+            if (this.toolCallLog.length > 50) {
+              this.toolCallLog = this.toolCallLog.slice(-50);
+            }
             this.events.emit('tool', { status: 'running', toolName, label });
             this.updateAssistantStatus();
           }
@@ -492,10 +495,16 @@ export class AgentSession {
       await this.session.disconnect();
       this.session = null;
     }
+    this.events.removeAllListeners();
   }
 
   isIdle(): boolean {
     return this.idle;
+  }
+
+  /** Update the in-memory project config (e.g. after a web API PATCH). */
+  updateProject(updates: Partial<ProjectConfig>): void {
+    Object.assign(this.project, updates);
   }
 
   /** Return the underlying SDK session ID, if initialized. */
@@ -560,7 +569,10 @@ export class AgentSession {
   private scheduleDeltaFlush(): void {
     if (this.deltaFlushTimer) return;
     this.deltaFlushTimer = setInterval(() => {
-      this.flushDeltaBuffer();
+      this.flushDeltaBuffer().catch((err) => {
+        getLogger().error('Delta flush error', { error: err });
+        this.stopDeltaFlush();
+      });
     }, this.DELTA_FLUSH_INTERVAL);
   }
 

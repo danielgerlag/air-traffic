@@ -21,7 +21,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('Wingman Console error:', error, info.componentStack)
+    console.error('Air Traffic Console error:', error, info.componentStack)
   }
 
   render() {

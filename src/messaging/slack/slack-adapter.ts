@@ -75,7 +75,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
   private botUserId: string | null = null;
 
   // Pending interaction trackers
-  private pendingQuestions = new Map<string, (response: QuestionResponse) => void>();
+  private pendingQuestions = new Map<string, { resolver: (response: QuestionResponse) => void; channelId: string }>();
   private pendingPermissions = new Map<string, (decision: PermissionDecision) => void>();
 
   private readonly config: SlackAdapterConfig;
@@ -187,10 +187,13 @@ export class SlackAdapter extends BaseMessagingAdapter {
         resolve({ answer: '', wasFreeform: false, timedOut: true });
       }, timeout);
 
-      this.pendingQuestions.set(requestId, (response) => {
-        clearTimeout(timer);
-        this.pendingQuestions.delete(requestId);
-        resolve(response);
+      this.pendingQuestions.set(requestId, {
+        channelId,
+        resolver: (response) => {
+          clearTimeout(timer);
+          this.pendingQuestions.delete(requestId);
+          resolve(response);
+        },
       });
     });
   }
@@ -220,13 +223,22 @@ export class SlackAdapter extends BaseMessagingAdapter {
 
   async sendFile(channelId: string, filePath: string, filename: string, initialComment?: string, threadId?: string): Promise<void> {
     const fileBuffer = await fs.promises.readFile(filePath);
-    await this.client.filesUploadV2({
-      channel_id: channelId,
-      filename,
-      file: fileBuffer,
-      initial_comment: initialComment,
-      ...(threadId ? { thread_ts: threadId } : {}),
-    });
+    if (threadId) {
+      await this.client.filesUploadV2({
+        channel_id: channelId,
+        thread_ts: threadId,
+        filename,
+        file: fileBuffer,
+        initial_comment: initialComment,
+      });
+    } else {
+      await this.client.filesUploadV2({
+        channel_id: channelId,
+        filename,
+        file: fileBuffer,
+        initial_comment: initialComment,
+      });
+    }
   }
 
   async downloadFile(url: string, destPath: string): Promise<void> {
@@ -267,10 +279,10 @@ export class SlackAdapter extends BaseMessagingAdapter {
     const statusText = `${status.machineName} · ${status.activeSessions} active sessions`;
     try {
       await this.client.users.profile.set({
-        profile: JSON.stringify({
+        profile: {
           status_text: statusText,
           status_emoji: ':white_check_mark:',
-        }),
+        },
       });
     } catch {
       // Non-critical — presence is best-effort
@@ -506,20 +518,20 @@ export class SlackAdapter extends BaseMessagingAdapter {
       // Extract requestId from action_id: question_choice_{requestId}_{index}
       const parts = act.action_id.split('_');
       const requestId = `${parts[2]}_${parts[3]}_${parts[4]}`;
-      const resolver = this.pendingQuestions.get(requestId);
-      if (resolver) {
-        resolver({ answer, wasFreeform: false, timedOut: false });
+      const pending = this.pendingQuestions.get(requestId);
+      if (pending) {
+        pending.resolver({ answer, wasFreeform: false, timedOut: false });
       }
     });
   }
 
   private handlePossibleQuestionReply(msg: IncomingMessage): void {
-    // Check all pending questions — resolve the first match by thread context
-    // Since we can't perfectly match thread to question, we resolve all pending questions
-    // that are awaiting freeform replies. In practice there's typically one per thread.
-    for (const [requestId, resolver] of this.pendingQuestions) {
-      resolver({ answer: msg.text, wasFreeform: true, timedOut: false });
-      return; // Only resolve one
+    // Match freeform reply to the pending question in the same channel
+    for (const [requestId, pending] of this.pendingQuestions) {
+      if (pending.channelId === msg.channelId) {
+        pending.resolver({ answer: msg.text, wasFreeform: true, timedOut: false });
+        return;
+      }
     }
   }
 

@@ -77,6 +77,11 @@ export function registerApiRoutes(
         req.params.name,
         req.body as Record<string, unknown>,
       );
+      // Sync in-memory session with updated config
+      const session = deps.orchestrator.getSession(req.params.name);
+      if (session) {
+        session.updateProject(updated);
+      }
       res.json(updated);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

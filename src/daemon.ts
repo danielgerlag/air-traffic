@@ -203,7 +203,13 @@ export class AirTrafficDaemon {
 
     const saved: string[] = [];
     for (const file of msg.files!) {
-      const destPath = path.join(project.path, file.name);
+      const safeName = path.basename(file.name);
+      if (safeName !== file.name || safeName.startsWith('.')) {
+        log.warn(`Rejected file upload with unsafe name: "${file.name}"`);
+        await this.adapter.sendMessage(msg.channelId, { text: `❌ Rejected file \`${file.name}\` — invalid filename.` });
+        continue;
+      }
+      const destPath = path.join(project.path, safeName);
       try {
         await this.adapter.downloadFile(file.url, destPath);
         saved.push(file.name);
@@ -442,6 +448,11 @@ export class AirTrafficDaemon {
       projectName,
       updates as Partial<Pick<import('./projects/types.js').ProjectConfig, 'model' | 'agent' | 'mode' | 'permissions'>>,
     );
+    // Sync in-memory session with updated config
+    const session = this.orchestrator.getSession(projectName);
+    if (session) {
+      session.updateProject(updated);
+    }
     await this.adapter.sendMessage(cmd.channelId, {
       text: `✅ Project "${updated.name}" config updated: ${field} = \`${value}\``,
     });

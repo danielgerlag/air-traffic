@@ -15,7 +15,7 @@ export default function App() {
               <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                 <div className="flex h-14 items-center justify-between">
                   <Link to="/" className="flex items-center gap-2 text-lg font-semibold">
-                    <span className="text-emerald-400">⚡</span> Wingman Console
+                    <span className="text-emerald-400">⚡</span> Air Traffic Console
                   </Link>
                   <div className="flex items-center gap-4">
                     <Link to="/" className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors">
