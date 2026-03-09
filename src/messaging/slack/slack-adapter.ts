@@ -520,9 +520,13 @@ export class SlackAdapter extends BaseMessagingAdapter {
       if (this.lastForwardCheckTs) params.oldest = this.lastForwardCheckTs;
       const history = await this.client.conversations.history(params as any);
 
-      for (const msg of history.messages ?? []) {
-        if (msg.ts) this.lastForwardCheckTs = msg.ts;
+      const messages = history.messages ?? [];
+      // Slack returns messages newest-first; track the newest ts to avoid re-processing
+      if (messages.length > 0 && messages[0].ts) {
+        this.lastForwardCheckTs = messages[0].ts;
+      }
 
+      for (const msg of messages) {
         if (msg.text?.startsWith('[atc-fwd] ')) {
           // Skip if nothing is pending
           if (this.pendingQuestions.size === 0 && this.pendingPermissions.size === 0) continue;
@@ -548,7 +552,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
           // Forwarded project channel message — check if it's for this machine
           try {
             const data = JSON.parse(msg.text.slice('[atc-msg] '.length));
-            if (data.targetMachine === this.machineName.toLowerCase()) {
+            if (data.targetMachine?.toLowerCase() === this.machineName.toLowerCase()) {
               const incoming: IncomingMessage = {
                 channelId: data.channelId,
                 channelName: data.channelName,
