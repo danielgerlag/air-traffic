@@ -1,11 +1,13 @@
 import type { MessagingAdapter, MachineStatus } from '../types.js';
-import { formatMachineStatus } from './formatters.js';
+
+export type StatusBuilder = () => MachineStatus;
 
 export class PresenceManager {
   private intervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private adapter: MessagingAdapter,
+    private buildStatus: StatusBuilder,
     private intervalMs: number = 60_000,
   ) {}
 
@@ -14,7 +16,6 @@ export class PresenceManager {
     this.intervalId = setInterval(() => {
       void this.sendHeartbeat();
     }, this.intervalMs);
-    // Send an initial heartbeat immediately
     void this.sendHeartbeat();
   }
 
@@ -26,16 +27,8 @@ export class PresenceManager {
   }
 
   async sendHeartbeat(): Promise<void> {
+    const status = this.buildStatus();
+    await this.adapter.registerMachine(status);
     await this.adapter.reportPresence();
-  }
-
-  buildStatus(activeSessions: number, projects: string[]): MachineStatus {
-    return {
-      machineName: this.adapter.machineName,
-      online: true,
-      activeSessions,
-      projects,
-      lastSeen: new Date(),
-    };
   }
 }

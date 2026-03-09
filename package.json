@@ -1,6 +1,6 @@
 {
   "name": "air-traffic",
-  "version": "1.0.0",
+  "version": "1.0.10",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.config.ts tests/e2e/",
+    "postinstall": "node scripts/patch-deps.mjs",
     "console:dev": "cd web && npx vite",
     "console:build": "cd web && npx vite build",
     "console:preview": "cd web && npx vite preview",
@@ -30,6 +31,7 @@
     "express": "^5.2.1",
     "simple-git": "^3.32.3",
     "socket.io": "^4.8.3",
+    "vscode-jsonrpc": "^8.2.1",
     "winston": "^3.19.0",
     "zod": "^4.3.6"
   },

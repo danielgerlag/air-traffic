@@ -8,6 +8,7 @@ import type {
   PermissionRequest,
   PermissionDecision,
   MachineStatus,
+  IncomingCommand,
   MessageHandler,
   CommandHandler,
 } from './types.js';
@@ -50,6 +51,13 @@ export abstract class BaseMessagingAdapter implements MessagingAdapter {
   // Presence
   abstract reportPresence(): Promise<void>;
   abstract reportStatus(status: MachineStatus): Promise<void>;
+
+  // Machine registry
+  abstract registerMachine(status: MachineStatus): Promise<void>;
+  abstract getRegisteredMachines(): Promise<MachineStatus[]>;
+
+  // Cross-machine forwarding
+  abstract forwardCommand(cmd: IncomingCommand): Promise<void>;
 
   // Event registration
   onMessage(handler: MessageHandler): void {

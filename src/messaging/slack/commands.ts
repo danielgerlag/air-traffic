@@ -70,6 +70,13 @@ export function isProjectChannel(channelName: string, machineName: string): bool
   return channelName.toLowerCase().startsWith(prefix) && channelName.length > prefix.length;
 }
 
+/** Match any atc-{machine}-{project} channel and extract the machine and project names. */
+export function parseAnyProjectChannel(channelName: string): { machineName: string; projectName: string } | null {
+  const match = channelName.toLowerCase().match(/^atc-([a-z0-9-]+?)-([a-z0-9-]+)$/);
+  if (!match) return null;
+  return { machineName: match[1], projectName: match[2] };
+}
+
 export function extractProjectName(channelName: string, machineName: string): string | null {
   const prefix = `atc-${machineName}-`.toLowerCase();
   const lower = channelName.toLowerCase();

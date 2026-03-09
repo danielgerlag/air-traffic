@@ -39,13 +39,20 @@ export class AirTrafficDaemon {
     this.orchestrator = new SessionOrchestrator();
     this.permissionManager = new PermissionManager();
     this.modelRegistry = new ModelRegistry();
-    this.presence = new PresenceManager(adapter);
+    this.presence = new PresenceManager(adapter, () => ({
+      machineName: this.config.airTraffic.machineName,
+      online: true,
+      activeSessions: this.orchestrator.getActiveSessionCount(),
+      projects: this.orchestrator.getActiveProjectNames(),
+      lastSeen: new Date(),
+    }));
   }
 
   async start(): Promise<void> {
     const log = getLogger();
 
     await this.orchestrator.start();
+    await this.modelRegistry.loadModels(this.orchestrator.getClient());
     await this.adapter.connect();
     this.presence.start();
 
@@ -283,8 +290,32 @@ export class AirTrafficDaemon {
   private async cmdCreateProject(cmd: IncomingCommand): Promise<void> {
     const { args } = cmd;
     if (args.length === 0) {
-      await this.adapter.sendMessage(cmd.channelId, { text: '❌ Usage: create <name> [--from <repo-url>]' });
+      await this.adapter.sendMessage(cmd.channelId, {
+        text: '❌ Usage: `create <name> [--from <repo-url>]`\nTo target a machine: `<machine>: create <name>`',
+      });
       return;
+    }
+
+    // If no explicit machine prefix was used, check if we should ask
+    if (cmd.type === 'broadcast') {
+      const machines = await this.adapter.getRegisteredMachines();
+      const onlineMachines = machines.filter(m => m.online);
+      if (onlineMachines.length > 1) {
+        const response = await this.adapter.askQuestion(cmd.channelId, cmd.threadId ?? cmd.channelId, {
+          question: '🖥️ Which machine should this project be created on?',
+          choices: onlineMachines.map(m => m.machineName),
+          allowFreeform: false,
+        });
+        if (response.timedOut) return;
+        const selected = response.answer.trim();
+        if (selected.toLowerCase() !== this.config.airTraffic.machineName.toLowerCase()) {
+          // Forward to the selected machine
+          cmd.targetMachine = selected;
+          cmd.type = 'targeted';
+          await this.adapter.forwardCommand(cmd);
+          return;
+        }
+      }
     }
 
     const name = args[0];
@@ -293,11 +324,32 @@ export class AirTrafficDaemon {
 
     const project = await this.projectManager.createProject(name, this.config.airTraffic.machineName, { repoUrl });
     await this.adapter.sendMessage(cmd.channelId, {
-      text: `✅ Project "${project.name}" created → <#${project.channelId}>`,
+      text: `✅ Project "${project.name}" created on *${this.config.airTraffic.machineName}* → <#${project.channelId}>`,
     });
   }
 
   private async cmdDeleteProject(cmd: IncomingCommand): Promise<void> {
+    // If no explicit machine prefix was used, check if we should ask
+    if (cmd.type === 'broadcast') {
+      const machines = await this.adapter.getRegisteredMachines();
+      const onlineMachines = machines.filter(m => m.online);
+      if (onlineMachines.length > 1) {
+        const response = await this.adapter.askQuestion(cmd.channelId, cmd.threadId ?? cmd.channelId, {
+          question: '🖥️ Which machine should this delete run on?',
+          choices: onlineMachines.map(m => m.machineName),
+          allowFreeform: false,
+        });
+        if (response.timedOut) return;
+        const selected = response.answer.trim();
+        if (selected.toLowerCase() !== this.config.airTraffic.machineName.toLowerCase()) {
+          cmd.targetMachine = selected;
+          cmd.type = 'targeted';
+          await this.adapter.forwardCommand(cmd);
+          return;
+        }
+      }
+    }
+
     let name = cmd.args[0];
     if (!name) {
       // Show project picker
@@ -321,7 +373,7 @@ export class AirTrafficDaemon {
     }
     this.orchestrator.removeSession(name);
     await this.projectManager.deleteProject(name);
-    await this.adapter.sendMessage(cmd.channelId, { text: `✅ Project "${name}" deleted` });
+    await this.adapter.sendMessage(cmd.channelId, { text: `✅ Project "${name}" deleted from *${this.config.airTraffic.machineName}*` });
   }
 
   private async cmdListProjects(cmd: IncomingCommand): Promise<void> {
@@ -331,11 +383,12 @@ export class AirTrafficDaemon {
       return;
     }
 
-    const lines = projects.map((p) => {
+    const lines = [`📋 *Projects on ${this.config.airTraffic.machineName}:*`];
+    lines.push(...projects.map((p) => {
       const session = this.orchestrator.getSession(p.name);
       const status = session ? (session.isIdle() ? '💤 idle' : '🔄 active') : '⬚ no session';
       return `• *${p.name}* — model: \`${p.model}\` — ${status}`;
-    });
+    }));
     await this.adapter.sendMessage(cmd.channelId, { text: lines.join('\n') });
   }
 
@@ -827,21 +880,37 @@ export class AirTrafficDaemon {
   // --- Status helpers ---
 
   private async postMachineStatus(channelId: string): Promise<void> {
-    const activeSessions = this.orchestrator.getActiveSessionCount();
-    const projects = this.orchestrator.getActiveProjectNames();
-    const status = {
-      machineName: this.config.airTraffic.machineName,
-      online: true,
-      activeSessions,
-      projects,
-      lastSeen: new Date(),
-    };
-    const content = formatMachineStatus(this.config.airTraffic.machineName, status);
-    await this.adapter.sendMessage(channelId, content);
+    const machines = await this.adapter.getRegisteredMachines();
+
+    if (machines.length === 0) {
+      // Fallback: show just this machine
+      const status = {
+        machineName: this.config.airTraffic.machineName,
+        online: true,
+        activeSessions: this.orchestrator.getActiveSessionCount(),
+        projects: this.orchestrator.getActiveProjectNames(),
+        lastSeen: new Date(),
+      };
+      const content = formatMachineStatus(this.config.airTraffic.machineName, status);
+      await this.adapter.sendMessage(channelId, content);
+      return;
+    }
+
+    const lines = machines.map((m) => {
+      const icon = m.online ? '🟢' : '🔴';
+      const state = m.online ? 'online' : `offline (last seen ${m.lastSeen.toISOString()})`;
+      const projects = m.projects.length > 0 ? m.projects.join(', ') : 'none';
+      return `${icon} *${m.machineName}* — ${state}\n     Sessions: ${m.activeSessions} · Projects: ${projects}`;
+    });
+
+    await this.adapter.sendMessage(channelId, {
+      text: `🖥️ *Registered machines:*\n\n${lines.join('\n\n')}`,
+    });
   }
 
   private async postMachinePresence(channelId: string): Promise<void> {
-    await this.adapter.reportPresence();
+    // Same as status — show all known machines
+    await this.postMachineStatus(channelId);
   }
 
   private async postAvailableModels(channelId: string): Promise<void> {

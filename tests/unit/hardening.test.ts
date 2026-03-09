@@ -27,7 +27,7 @@ vi.mock('../../src/copilot/session-orchestrator.js', () => {
     private sessions = new Map<string, unknown>();
     async start() {}
     async stop() {}
-    getClient() { return {} as any; }
+    getClient() { return { listModels: async () => [] } as any; }
     registerSession(name: string, session: unknown) { this.sessions.set(name, session); }
     getSession(name: string) { return this.sessions.get(name); }
     removeSession(name: string) { this.sessions.delete(name); }

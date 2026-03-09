@@ -1,32 +1,29 @@
+import type { CopilotClient } from '@github/copilot-sdk';
 import { getLogger } from '../utils/logger.js';
 
-const KNOWN_MODELS = [
-  'claude-sonnet-4.5',
-  'claude-sonnet-4',
-  'claude-opus-4.6',
-  'gpt-5',
-  'gpt-5-mini',
-  'gpt-4.1',
-  'gemini-3-pro-preview',
-] as const;
-
-export type ModelId = (typeof KNOWN_MODELS)[number] | string;
-
 export class ModelRegistry {
-  private models: Set<string> = new Set(KNOWN_MODELS);
+  private models: string[] = [];
+  private loaded = false;
 
-  /** Accept any non-empty string (new models get added dynamically). */
+  /** Load available models from the Copilot SDK. */
+  async loadModels(client: CopilotClient): Promise<void> {
+    try {
+      const modelInfos = await client.listModels();
+      this.models = modelInfos.map((m) => m.id);
+      this.loaded = true;
+      getLogger().info(`Loaded ${this.models.length} models from Copilot SDK`);
+    } catch (err) {
+      getLogger().warn('Failed to load models from Copilot SDK', { error: err });
+    }
+  }
+
   isValid(model: string): boolean {
-    return this.models.has(model) || model.length > 0;
+    if (!this.loaded) return model.length > 0;
+    return this.models.includes(model) || model.length > 0;
   }
 
   getAvailable(): string[] {
     return [...this.models];
-  }
-
-  addModel(model: string): void {
-    this.models.add(model);
-    getLogger().debug(`Model added to registry: ${model}`);
   }
 
   getDefault(configDefault: string): string {

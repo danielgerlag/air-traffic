@@ -23,4 +23,3 @@ slack-app-manifest.yaml
 *.log
 npm-debug.log
 data/
-projects/

@@ -126,6 +126,13 @@ export interface MessagingAdapter {
   reportPresence(): Promise<void>;
   reportStatus(status: MachineStatus): Promise<void>;
 
+  // Machine registry
+  registerMachine(status: MachineStatus): Promise<void>;
+  getRegisteredMachines(): Promise<MachineStatus[]>;
+
+  // Cross-machine forwarding
+  forwardCommand(cmd: IncomingCommand): Promise<void>;
+
   // Events (machine-filtered)
   onMessage(handler: MessageHandler): void;
   onCommand(handler: CommandHandler): void;
