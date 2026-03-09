@@ -86,12 +86,75 @@ describe('parseControlChannelMessage', () => {
     });
   });
 
+  // --- New commands added for sessions/join/help ---
+
+  it('parses targeted sessions command', () => {
+    const result = parseControlChannelMessage('desktop: sessions');
+    expect(result).toEqual({
+      type: 'targeted',
+      targetMachine: 'desktop',
+      command: 'sessions',
+      args: [],
+    });
+  });
+
+  it('parses sessions as broadcast command', () => {
+    const result = parseControlChannelMessage('sessions');
+    expect(result).toEqual({
+      type: 'broadcast',
+      command: 'sessions',
+      args: [],
+    });
+  });
+
+  it('parses targeted join command with session ID', () => {
+    const result = parseControlChannelMessage('desktop: join abc12345');
+    expect(result).toEqual({
+      type: 'targeted',
+      targetMachine: 'desktop',
+      command: 'join',
+      args: ['abc12345'],
+    });
+  });
+
+  it('parses join without args as broadcast', () => {
+    const result = parseControlChannelMessage('join');
+    expect(result).toEqual({
+      type: 'broadcast',
+      command: 'join',
+      args: [],
+    });
+  });
+
+  it('parses targeted help command', () => {
+    const result = parseControlChannelMessage('desktop: help');
+    expect(result).toEqual({
+      type: 'targeted',
+      targetMachine: 'desktop',
+      command: 'help',
+      args: [],
+    });
+  });
+
+  it('parses help as broadcast command', () => {
+    const result = parseControlChannelMessage('help');
+    expect(result).toEqual({
+      type: 'broadcast',
+      command: 'help',
+      args: [],
+    });
+  });
+
   it('returns null for empty string', () => {
     expect(parseControlChannelMessage('')).toBeNull();
   });
 
   it('returns null for unknown command', () => {
     expect(parseControlChannelMessage('hello world')).toBeNull();
+  });
+
+  it('returns null for unknown targeted command', () => {
+    expect(parseControlChannelMessage('desktop: foobar')).toBeNull();
   });
 });
 
@@ -124,12 +187,81 @@ describe('parseProjectChannelMessage', () => {
     });
   });
 
+  // --- New commands ---
+
+  it('parses !mode command with arg', () => {
+    expect(parseProjectChannelMessage('!mode plan')).toEqual({
+      command: 'mode',
+      args: ['plan'],
+    });
+  });
+
+  it('parses !mode command without arg', () => {
+    expect(parseProjectChannelMessage('!mode')).toEqual({
+      command: 'mode',
+      args: [],
+    });
+  });
+
+  it('parses !sessions command', () => {
+    expect(parseProjectChannelMessage('!sessions')).toEqual({
+      command: 'sessions',
+      args: [],
+    });
+  });
+
+  it('parses !join command with session ID', () => {
+    expect(parseProjectChannelMessage('!join abc12345')).toEqual({
+      command: 'join',
+      args: ['abc12345'],
+    });
+  });
+
+  it('parses !join without session ID', () => {
+    expect(parseProjectChannelMessage('!join')).toEqual({
+      command: 'join',
+      args: [],
+    });
+  });
+
+  it('parses !leave command', () => {
+    expect(parseProjectChannelMessage('!leave')).toEqual({
+      command: 'leave',
+      args: [],
+    });
+  });
+
+  it('parses !agent command', () => {
+    expect(parseProjectChannelMessage('!agent my-agent')).toEqual({
+      command: 'agent',
+      args: ['my-agent'],
+    });
+  });
+
+  it('parses !history command', () => {
+    expect(parseProjectChannelMessage('!history')).toEqual({
+      command: 'history',
+      args: [],
+    });
+  });
+
+  it('parses !help command', () => {
+    expect(parseProjectChannelMessage('!help')).toEqual({
+      command: 'help',
+      args: [],
+    });
+  });
+
   it('returns null for regular prompt text', () => {
     expect(parseProjectChannelMessage('Add JWT authentication')).toBeNull();
   });
 
   it('returns null for empty string', () => {
     expect(parseProjectChannelMessage('')).toBeNull();
+  });
+
+  it('returns null for unknown command', () => {
+    expect(parseProjectChannelMessage('!foobar')).toBeNull();
   });
 });
 

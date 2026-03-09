@@ -164,6 +164,14 @@ export class InMemoryMessagingAdapter extends BaseMessagingAdapter {
     // No-op in test adapter
   }
 
+  // --- Thread status ---
+
+  readonly threadStatuses: Array<{ channelId: string; threadId: string; status: string; loadingMessages?: string[] }> = [];
+
+  async setThreadStatus(channelId: string, threadId: string, status: string, loadingMessages?: string[]): Promise<void> {
+    this.threadStatuses.push({ channelId, threadId, status, loadingMessages });
+  }
+
   // --- Presence ---
 
   async reportPresence(): Promise<void> {
@@ -225,6 +233,7 @@ export class InMemoryMessagingAdapter extends BaseMessagingAdapter {
     this.reportedStatuses.length = 0;
     this.updatedMessages.length = 0;
     this.sentFiles.length = 0;
+    this.threadStatuses.length = 0;
     this.questionResponses.length = 0;
     this.permissionDecisions.length = 0;
     this.presenceReported = false;

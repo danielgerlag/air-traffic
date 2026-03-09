@@ -1,5 +1,5 @@
-const CONTROL_COMMANDS = new Set(['create', 'list', 'delete', 'config', 'status', 'machines', 'models']);
-const PROJECT_COMMANDS = new Set(['model', 'status', 'abort', 'diff', 'agent', 'history']);
+const CONTROL_COMMANDS = new Set(['create', 'list', 'delete', 'config', 'status', 'machines', 'models', 'sessions', 'join', 'help']);
+const PROJECT_COMMANDS = new Set(['model', 'status', 'abort', 'diff', 'agent', 'mode', 'history', 'sessions', 'join', 'leave', 'help']);
 const BROADCAST_COMMANDS = new Set(['status', 'machines']);
 
 /**

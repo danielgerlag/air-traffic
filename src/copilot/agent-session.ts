@@ -14,6 +14,20 @@ const PLAN_FILE_PATTERNS = ['plan.md', 'PLAN.md'];
 /** File extensions that should be auto-uploaded to the channel when created by tools. */
 const AUTO_UPLOAD_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.pdf'];
 
+/** Tools whose status we skip in the tool-call ticker (handled separately or too noisy). */
+const TOOL_STATUS_SKIP = new Set(['report_intent']);
+
+/** Extract a brief description for a tool call from its args. */
+function toolCallLabel(toolName: string, toolArgs: Record<string, unknown>): string {
+  const desc = (toolArgs.description ?? '') as string;
+  if (desc) return desc;
+  const p = (toolArgs.path ?? toolArgs.file_path ?? toolArgs.filename ?? '') as string;
+  if (p) return path.basename(p);
+  const pat = (toolArgs.pattern ?? toolArgs.query ?? '') as string;
+  if (pat) return pat.length > 40 ? pat.slice(0, 37) + '…' : pat;
+  return '';
+}
+
 /** System preamble injected to give Copilot context about the bridged remote interaction. */
 function buildSystemPreamble(project: ProjectConfig): string {
   return [
@@ -29,8 +43,18 @@ function buildSystemPreamble(project: ProjectConfig): string {
     '• Do NOT say "here\'s the screenshot" without saving the file — the user can\'t see your local screen.',
     '• Do NOT suggest the user open localhost URLs — they are remote. Instead, describe what you see or take a screenshot.',
     '• When using Playwright or browser tools, capture screenshots and save them to share results.',
-    '• Keep responses concise — they will be displayed in a chat interface with limited formatting.',
     '• For questions or decisions, be explicit — the user will respond through the messaging channel.',
+    '',
+    'OUTPUT FORMATTING — your responses are rendered in Slack, not a terminal or browser:',
+    '• Use Slack mrkdwn syntax, NOT standard Markdown.',
+    '• Bold: *bold text*  Italic: _italic text_  Strikethrough: ~struck~  Inline code: `code`',
+    '• Code blocks: wrap in triple backticks (``` ... ```). You can add a language hint on the opening line.',
+    '• Links: <https://example.com|link text>  — do NOT use [text](url) Markdown links.',
+    '• Bullet lists: use • or - at the start of a line. Numbered lists: 1. 2. 3.',
+    '• Do NOT use # for headings — Slack does not render them. Use *bold* for section titles instead.',
+    '• Do NOT use HTML tags — Slack strips them.',
+    '• Block quotes: prefix lines with > for quoted text.',
+    '• Keep messages concise — Slack truncates very long messages.',
     '</wingman_context>',
   ].join('\n');
 }
@@ -44,14 +68,10 @@ export class AgentSession {
   private lastDeltaMessageRef: MessageRef | null = null;
   private idle: boolean = true;
   private pendingPlanFile: string | null = null;
-  private thinkingRef: MessageRef | null = null;
-  private toolStatusRef: MessageRef | null = null;
-  private intentRef: MessageRef | null = null;
-  private thinkingTimer: ReturnType<typeof setInterval> | null = null;
-  private thinkingTick: number = 0;
   private activeSubAgent: string | null = null;
+  private currentIntent: string = '';
+  private toolCallLog: Array<{ name: string; label: string; done: boolean }> = [];
   private readonly DELTA_FLUSH_INTERVAL = 2000; // 2 seconds
-  private static readonly THINKING_FRAMES = ['⏳ Thinking', '⏳ Thinking.', '⏳ Thinking..', '⏳ Thinking...'];
 
   /** EventEmitter for Console / Socket.IO observation of session events. */
   public readonly events: EventEmitter = new EventEmitter();
@@ -88,6 +108,8 @@ export class AgentSession {
           },
         );
         this.events.emit('answer', { question: request.question, answer: response.answer });
+        // Re-assert status — the question message cleared it
+        this.updateAssistantStatus();
         return { answer: response.answer, wasFreeform: response.wasFreeform };
       },
       hooks: {
@@ -95,21 +117,14 @@ export class AgentSession {
           const toolName = input.toolName;
           getLogger().debug(`onPreToolUse called: ${toolName}`, { args: input.toolArgs });
 
-          // Capture report_intent tool calls → show intent in channel
+          // Capture report_intent tool calls → update assistant status
           if (toolName === 'report_intent') {
             const args = input.toolArgs as Record<string, unknown>;
             const intent = (args.intent ?? '') as string;
             if (intent && this.currentThreadId) {
+              this.currentIntent = intent;
               this.events.emit('intent', { intent });
-              const text = `💭 \`${intent}\``;
-              if (this.intentRef) {
-                this.messaging.deleteMessage(this.intentRef).catch(() => {});
-                this.intentRef = null;
-              }
-              this.messaging
-                .sendMessage(this.project.channelId, { text })
-                .then((ref) => { this.intentRef = ref; })
-                .catch(() => {});
+              this.updateAssistantStatus();
             }
             return { permissionDecision: 'allow' as const };
           }
@@ -120,17 +135,16 @@ export class AgentSession {
             const description = (args.description ?? args.prompt ?? 'sub-agent') as string;
             this.activeSubAgent = description;
             this.events.emit('subagent', { status: 'start', description });
-            if (this.currentThreadId) {
-              const text = `🤖 Sub-agent: _${description}_`;
-              if (this.toolStatusRef) {
-                this.messaging.updateMessage(this.toolStatusRef, { text }).catch(() => {});
-              } else {
-                this.messaging
-                  .sendMessage(this.project.channelId, { text })
-                  .then((ref) => { this.toolStatusRef = ref; })
-                  .catch(() => {});
-              }
-            }
+            this.updateAssistantStatus();
+          }
+
+          // Track tool calls for assistant status
+          if (!TOOL_STATUS_SKIP.has(toolName) && this.currentThreadId) {
+            const args = input.toolArgs as Record<string, unknown>;
+            const label = toolCallLabel(toolName, args);
+            this.toolCallLog.push({ name: toolName, label, done: false });
+            this.events.emit('tool', { status: 'running', toolName, label });
+            this.updateAssistantStatus();
           }
 
           // Detect plan file writes for auto-upload
@@ -161,6 +175,8 @@ export class AgentSession {
               },
             );
             this.events.emit('permission_response', { toolName, category, decision });
+            // Re-assert status after permission interaction
+            this.updateAssistantStatus();
             if (decision === 'always_allow') {
               (this.project.permissions as unknown as Record<string, string>)[category] = 'auto';
               this.events.emit('permissions_updated', {
@@ -180,6 +196,22 @@ export class AgentSession {
           const toolName = input.toolName;
           const args = input.toolArgs as Record<string, unknown>;
 
+          // Mark tool done in the call log
+          if (!TOOL_STATUS_SKIP.has(toolName) && this.currentThreadId) {
+            let idx = -1;
+            for (let i = this.toolCallLog.length - 1; i >= 0; i--) {
+              if (this.toolCallLog[i].name === toolName && !this.toolCallLog[i].done) {
+                idx = i;
+                break;
+              }
+            }
+            if (idx >= 0) {
+              this.toolCallLog[idx].done = true;
+              this.events.emit('tool', { status: 'done', toolName, label: this.toolCallLog[idx].label });
+              this.updateAssistantStatus();
+            }
+          }
+
           // Capture sub-agent (task tool) completion and post output
           if (toolName === 'task' && this.activeSubAgent) {
             const result = input.toolResult?.textResultForLlm ?? '';
@@ -191,6 +223,8 @@ export class AgentSession {
               await this.messaging.sendMessage(this.project.channelId, {
                 text: `🤖 *Sub-agent result* — _${description}_\n>>>${formatted}`,
               }).catch(() => {});
+              // Re-assert status after sending
+              this.updateAssistantStatus();
             }
             this.events.emit('subagent', { status: 'done', description, output: result });
           }
@@ -226,6 +260,45 @@ export class AgentSession {
         },
       },
     };
+  }
+
+  /**
+   * Build and push a rich status string to the Slack assistant status API.
+   * Uses `status` for the primary action and `loading_messages` to cycle
+   * through recent tool activity.
+   */
+  private updateAssistantStatus(): void {
+    if (!this.currentThreadId) return;
+
+    // Primary status line
+    let status = 'is thinking…';
+    if (this.activeSubAgent) {
+      status = `is running sub-agent: ${this.activeSubAgent}`;
+    } else if (this.currentIntent) {
+      status = `is ${this.currentIntent.toLowerCase()}`;
+    }
+
+    // Build loading_messages from the tool call log (last 10)
+    const loadingMessages: string[] = [];
+    const recent = this.toolCallLog.slice(-10);
+    for (const t of recent) {
+      const icon = t.done ? '✅' : '⚙️';
+      const detail = t.label ? ` — ${t.label}` : '';
+      loadingMessages.push(`${icon} ${t.name}${detail}`);
+    }
+
+    this.messaging.setThreadStatus(
+      this.project.channelId,
+      this.currentThreadId,
+      status,
+      loadingMessages.length > 0 ? loadingMessages : undefined,
+    ).catch(() => {});
+  }
+
+  /** Clear the assistant status indicator. */
+  private clearAssistantStatus(): void {
+    if (!this.currentThreadId) return;
+    this.messaging.setThreadStatus(this.project.channelId, this.currentThreadId, '').catch(() => {});
   }
 
   async initialize(model?: string): Promise<void> {
@@ -281,50 +354,26 @@ export class AgentSession {
 
     // Stream deltas (batched)
     this.session.on('assistant.message_delta', (event) => {
-      this.stopThinking(); // dismiss spinner on first output
       this.deltaBuffer += event.data.deltaContent;
       this.scheduleDeltaFlush();
       this.events.emit('delta', { content: event.data.deltaContent });
     });
 
-    // Tool execution start
+    // Tool execution start (event only — status handled by onPreToolUse)
     this.session.on('tool.execution_start', (event) => {
-      this.stopThinking(); // dismiss spinner on first tool
       const toolName = event.data?.toolName ?? 'unknown tool';
       this.events.emit('tool', { toolName, status: 'start' });
-      if (this.currentThreadId) {
-        const text = `🔧 Running: ${toolName}`;
-        if (this.toolStatusRef) {
-          this.messaging
-            .updateMessage(this.toolStatusRef, { text })
-            .catch((err) => getLogger().error('Failed to update tool status', { error: err }));
-        } else {
-          this.messaging
-            .sendMessage(this.project.channelId, { text })
-            .then((ref) => { this.toolStatusRef = ref; })
-            .catch((err) => getLogger().error('Failed to post tool status', { error: err }));
-        }
-      }
     });
 
     // Session idle (task complete)
     this.session.on('session.idle', () => {
-      this.stopThinking();
-      // Remove tool status message
-      if (this.toolStatusRef) {
-        this.messaging.deleteMessage(this.toolStatusRef).catch(() => {});
-        this.toolStatusRef = null;
-      }
-      // Remove intent message
-      if (this.intentRef) {
-        this.messaging.deleteMessage(this.intentRef).catch(() => {});
-        this.intentRef = null;
-      }
+      this.idle = true; // Set idle BEFORE flushing to prevent status re-assertion
+      this.clearAssistantStatus();
       this.activeSubAgent = null;
+      this.currentIntent = '';
       this.flushDeltaBuffer()
         .then(async () => {
           this.stopDeltaFlush();
-          this.idle = true;
           this.events.emit('idle');
 
           // Upload plan file if one was written during this task
@@ -366,11 +415,11 @@ export class AgentSession {
     this.deltaBuffer = '';
     this.accumulatedContent = '';
     this.lastDeltaMessageRef = null;
-    this.toolStatusRef = null;
-    this.intentRef = null;
+    this.currentIntent = '';
+    this.toolCallLog = [];
 
     this.events.emit('prompt', { text: prompt });
-    await this.startThinking();
+    this.updateAssistantStatus(); // Shows "Thinking…" via assistant API
 
     const modePrefix = MODE_PREFIXES[this.project.mode ?? 'normal'] ?? '';
     await this.session!.send({ prompt: `${modePrefix}${prompt}` });
@@ -399,6 +448,27 @@ export class AgentSession {
   /** Return the underlying SDK session ID, if initialized. */
   getSessionId(): string | null {
     return this.session?.sessionId ?? null;
+  }
+
+  /** Return structured conversation history from the underlying session. */
+  async getHistory(): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
+    if (!this.session) return [];
+    try {
+      const messages = await this.session.getMessages();
+      const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+      for (const msg of messages) {
+        if (msg.type === 'user.message') {
+          const text = (msg as any).data?.content ?? '';
+          if (text) history.push({ role: 'user', content: text });
+        } else if (msg.type === 'assistant.message') {
+          const text = (msg as any).data?.content ?? '';
+          if (text) history.push({ role: 'assistant', content: text });
+        }
+      }
+      return history;
+    } catch {
+      return [];
+    }
   }
 
   /** Try to upload a file to the messaging channel if it has an uploadable extension. */
@@ -465,47 +535,11 @@ export class AgentSession {
           { text: formatted },
         );
       }
+      // Re-assert assistant status after sending — Slack auto-clears it on bot messages
+      if (!this.idle) this.updateAssistantStatus();
     } catch (err) {
       getLogger().error('Failed to flush delta buffer', { error: err });
     }
   }
 
-  // --- Thinking indicator ---
-
-  private async startThinking(): Promise<void> {
-    this.thinkingTick = 0;
-    try {
-      this.thinkingRef = await this.messaging.sendMessage(this.project.channelId, {
-        text: AgentSession.THINKING_FRAMES[0],
-      });
-    } catch {
-      return; // Non-critical — don't block the session
-    }
-    this.thinkingTimer = setInterval(() => {
-      this.thinkingTick = (this.thinkingTick + 1) % AgentSession.THINKING_FRAMES.length;
-      if (this.thinkingRef) {
-        this.messaging
-          .updateMessage(this.thinkingRef, { text: AgentSession.THINKING_FRAMES[this.thinkingTick] })
-          .catch(() => {}); // best-effort animation
-      }
-    }, 1000);
-  }
-
-  private async stopThinking(): Promise<void> {
-    if (this.thinkingTimer) {
-      clearInterval(this.thinkingTimer);
-      this.thinkingTimer = null;
-    }
-    if (this.thinkingRef) {
-      try {
-        await this.messaging.deleteMessage(this.thinkingRef);
-      } catch {
-        // If delete fails, try blanking it out
-        try {
-          await this.messaging.updateMessage(this.thinkingRef, { text: '🔄 Working...' });
-        } catch { /* best-effort */ }
-      }
-      this.thinkingRef = null;
-    }
-  }
 }

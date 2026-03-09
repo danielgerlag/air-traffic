@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getSocket, joinProject, leaveProject, sendPrompt, abortSession } from '../lib/socket'
+import { api } from '../lib/api'
 import type { SessionEvent } from '../lib/types'
 
 export interface SessionLine {
   id: string
-  type: 'delta' | 'message' | 'tool' | 'idle' | 'prompt' | 'error' | 'permission' | 'question' | 'answer' | 'intent' | 'subagent'
+  type: 'delta' | 'message' | 'tool' | 'idle' | 'prompt' | 'error' | 'permission' | 'question' | 'answer' | 'intent' | 'subagent' | 'history'
   content: string
   timestamp: number
 }
@@ -12,6 +13,7 @@ export interface SessionLine {
 export function useSession(projectName: string | undefined) {
   const [lines, setLines] = useState<SessionLine[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const idCounter = useRef(0)
 
   const addLine = useCallback((type: SessionLine['type'], content: string) => {
@@ -22,6 +24,45 @@ export function useSession(projectName: string | undefined) {
       timestamp: Date.now(),
     }])
   }, [])
+
+  // Fetch conversation history when connecting to a project
+  useEffect(() => {
+    if (!projectName) return
+    setHistoryLoaded(false)
+
+    api.getHistory(projectName).then(({ history, sessionId }) => {
+      if (history.length > 0) {
+        const historyLines: SessionLine[] = []
+        historyLines.push({
+          id: `hist-header`,
+          type: 'history',
+          content: `📜 Session history (${sessionId?.slice(0, 8) ?? 'unknown'}) — ${history.length} messages`,
+          timestamp: Date.now(),
+        })
+        for (const msg of history) {
+          const icon = msg.role === 'user' ? '>' : ''
+          const type: SessionLine['type'] = msg.role === 'user' ? 'prompt' : 'message'
+          historyLines.push({
+            id: `hist-${idCounter.current++}`,
+            type,
+            content: `${icon} ${msg.content}`.trimStart(),
+            timestamp: Date.now(),
+          })
+        }
+        historyLines.push({
+          id: `hist-sep`,
+          type: 'history',
+          content: '— live session —',
+          timestamp: Date.now(),
+        })
+        setLines(prev => [...historyLines, ...prev])
+      }
+      setHistoryLoaded(true)
+    }).catch((err) => {
+      console.warn('Failed to load session history:', err)
+      setHistoryLoaded(true)
+    })
+  }, [projectName])
 
   useEffect(() => {
     if (!projectName) return
@@ -37,7 +78,10 @@ export function useSession(projectName: string | undefined) {
     }
     const onTool = (data: SessionEvent) => {
       if (data.projectName === projectName) {
-        addLine('tool', `🔧 ${data.toolName}: ${data.status}`)
+        const icon = data.status === 'done' ? '✅' : '⚙️'
+        const verb = data.status === 'done' ? 'Completed' : 'Running'
+        const label = data.label ? ` — ${data.label}` : ''
+        addLine('tool', `${icon} ${verb}: ${data.toolName}${label}`)
       }
     }
     const onIdle = (data: SessionEvent) => {

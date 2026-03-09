@@ -246,6 +246,24 @@ export class SlackAdapter extends BaseMessagingAdapter {
     await pipeline(Readable.fromWeb(res.body as any), fileStream);
   }
 
+  // --- Thread status (AI assistant indicator) ---
+
+  async setThreadStatus(channelId: string, threadId: string, status: string, loadingMessages?: string[]): Promise<void> {
+    try {
+      const payload: Record<string, unknown> = {
+        channel_id: channelId,
+        thread_ts: threadId,
+        status,
+      };
+      if (loadingMessages && loadingMessages.length > 0) {
+        payload.loading_messages = loadingMessages.slice(0, 10);
+      }
+      await this.client.apiCall('assistant.threads.setStatus', payload);
+    } catch {
+      // Silently ignore — status indicator is non-critical
+    }
+  }
+
   // --- Presence ---
 
   async reportPresence(): Promise<void> {
@@ -357,7 +375,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
         // Control channel or any other channel: parse as control command
         const parsed = parseControlChannelMessage(text);
         if (!parsed) {
-          const controlCommands = ['create', 'delete', 'list', 'config', 'status', 'models', 'sessions', 'join'];
+          const controlCommands = ['create', 'delete', 'list', 'config', 'status', 'models', 'sessions', 'join', 'help'];
           const firstWord = text.split(/\s+/)[0]?.toLowerCase() ?? '';
           await this.sendMessage(channelId, formatUnknownCommand(firstWord, suggestCommands(firstWord, controlCommands)));
           return;
@@ -365,7 +383,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
 
         const cmd: IncomingCommand = {
           type: parsed.type,
-          targetMachine: parsed.targetMachine,
+          targetMachine: parsed.targetMachine ?? this.machineName,
           command: parsed.command,
           args: parsed.args,
           rawText: text,
@@ -375,7 +393,10 @@ export class SlackAdapter extends BaseMessagingAdapter {
           messageId,
         };
 
-        if (parsed.type === 'broadcast') {
+        // In per-machine control channel, treat all commands as targeted to this machine
+        if (channelId === this.controlChannel?.id) {
+          await this.dispatchCommand(cmd);
+        } else if (parsed.type === 'broadcast') {
           await this.dispatchBroadcast(cmd);
         } else if (parsed.type === 'targeted' && parsed.targetMachine === this.machineName) {
           await this.dispatchCommand(cmd);
@@ -539,7 +560,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
 
     const cmd: IncomingCommand = {
       type: parsed.type,
-      targetMachine: parsed.targetMachine,
+      targetMachine: parsed.targetMachine ?? this.machineName,
       command: parsed.command,
       args: parsed.args,
       rawText: msg.text,
@@ -550,11 +571,8 @@ export class SlackAdapter extends BaseMessagingAdapter {
       messageId: msg.messageId,
     };
 
-    if (parsed.type === 'broadcast') {
-      await this.dispatchBroadcast(cmd);
-    } else if (parsed.type === 'targeted' && parsed.targetMachine === this.machineName) {
-      await this.dispatchCommand(cmd);
-    }
+    // In per-machine control channel, treat all commands as targeted to this machine
+    await this.dispatchCommand(cmd);
   }
 
   private async handleProjectMessage(msg: IncomingMessage): Promise<void> {

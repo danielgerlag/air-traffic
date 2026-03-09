@@ -44,6 +44,9 @@ export abstract class BaseMessagingAdapter implements MessagingAdapter {
   // File downloads
   abstract downloadFile(url: string, destPath: string): Promise<void>;
 
+  // Thread status (AI assistant typing indicator)
+  abstract setThreadStatus(channelId: string, threadId: string, status: string, loadingMessages?: string[]): Promise<void>;
+
   // Presence
   abstract reportPresence(): Promise<void>;
   abstract reportStatus(status: MachineStatus): Promise<void>;

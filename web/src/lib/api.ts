@@ -65,6 +65,16 @@ export interface CopilotSessionInfo {
   }
 }
 
+export interface HistoryMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface SessionHistory {
+  history: HistoryMessage[]
+  sessionId: string | null
+}
+
 export const api = {
   getStatus: () => request<MachineStatus>('/status'),
   getProjects: () => request<ProjectInfo[]>('/projects'),
@@ -86,6 +96,7 @@ export const api = {
   getFiles: (name: string, dir?: string) =>
     request<FileListing>(`/projects/${name}/files${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),
   getSessions: () => request<CopilotSessionInfo[]>('/sessions'),
+  getHistory: (name: string) => request<SessionHistory>(`/projects/${name}/history`),
   joinSession: (projectName: string, sessionId: string) =>
     request<{ success: boolean; sessionId: string; summary: string }>(`/projects/${projectName}/join`, {
       method: 'POST',

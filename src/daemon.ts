@@ -10,6 +10,7 @@ import { ModelRegistry } from './copilot/model-registry.js';
 import { PresenceManager } from './messaging/slack/presence.js';
 import { extractProjectName } from './messaging/slack/commands.js';
 import { parseProjectChannelMessage } from './messaging/slack/commands.js';
+import { formatControlHelp } from './messaging/slack/formatters.js';
 import { MODE_DESCRIPTIONS } from './projects/types.js';
 import type { CopilotMode } from './projects/types.js';
 import { WebServer } from './web/server.js';
@@ -131,6 +132,9 @@ export class WingmanDaemon {
           break;
         case 'models':
           await this.postAvailableModels(cmd.channelId);
+          break;
+        case 'help':
+          await this.adapter.sendMessage(cmd.channelId, formatControlHelp(this.config.wingman.machineName));
           break;
         default:
           log.warn(`Unknown targeted command: ${cmd.command}`);
@@ -288,10 +292,21 @@ export class WingmanDaemon {
   }
 
   private async cmdDeleteProject(cmd: IncomingCommand): Promise<void> {
-    const name = cmd.args[0];
+    let name = cmd.args[0];
     if (!name) {
-      await this.adapter.sendMessage(cmd.channelId, { text: '❌ Usage: delete <project-name>' });
-      return;
+      // Show project picker
+      const projects = await this.projectManager.listProjects();
+      if (projects.length === 0) {
+        await this.adapter.sendMessage(cmd.channelId, { text: 'No projects to delete.' });
+        return;
+      }
+      const response = await this.adapter.askQuestion(cmd.channelId, cmd.channelId, {
+        question: '🗑️ Which project do you want to delete?',
+        choices: projects.map(p => p.name),
+        allowFreeform: false,
+      });
+      name = response.answer.trim();
+      if (!name) return;
     }
 
     const session = this.orchestrator.getSession(name);
@@ -319,13 +334,67 @@ export class WingmanDaemon {
   }
 
   private async cmdUpdateConfig(cmd: IncomingCommand): Promise<void> {
-    const [projectName, field, ...valueParts] = cmd.args;
-    if (!projectName || !field || valueParts.length === 0) {
-      await this.adapter.sendMessage(cmd.channelId, {
-        text: '❌ Usage: config <project> <field> <value>',
+    let [projectName, field, ...valueParts] = cmd.args;
+
+    // If no project name, show project picker
+    if (!projectName) {
+      const projects = await this.projectManager.listProjects();
+      if (projects.length === 0) {
+        await this.adapter.sendMessage(cmd.channelId, { text: 'No projects configured.' });
+        return;
+      }
+      const resp = await this.adapter.askQuestion(cmd.channelId, cmd.channelId, {
+        question: '⚙️ Which project do you want to configure?',
+        choices: projects.map(p => p.name),
+        allowFreeform: false,
       });
-      return;
+      projectName = resp.answer.trim();
+      if (!projectName) return;
     }
+
+    // If no field, show field picker
+    if (!field) {
+      const resp = await this.adapter.askQuestion(cmd.channelId, cmd.channelId, {
+        question: `⚙️ What do you want to configure for *${projectName}*?`,
+        choices: ['model', 'agent', 'permissions'],
+        allowFreeform: false,
+      });
+      field = resp.answer.trim();
+      if (!field) return;
+    }
+
+    // If no value, show contextual picker
+    if (valueParts.length === 0) {
+      if (field === 'model') {
+        const models = this.modelRegistry.getAvailable();
+        const resp = await this.adapter.askQuestion(cmd.channelId, cmd.channelId, {
+          question: `🤖 Which model for *${projectName}*?`,
+          choices: models,
+          allowFreeform: true,
+        });
+        valueParts = [resp.answer.trim()];
+      } else if (field === 'permissions') {
+        const resp = await this.adapter.askQuestion(cmd.channelId, cmd.channelId, {
+          question: `🔒 Which permission category?`,
+          choices: ['all', 'fileEdit', 'fileCreate', 'shell', 'git', 'network', 'default'],
+          allowFreeform: false,
+        });
+        const category = resp.answer.trim();
+        const modeResp = await this.adapter.askQuestion(cmd.channelId, cmd.channelId, {
+          question: `🔒 Set \`${category}\` permission to?`,
+          choices: ['auto', 'ask'],
+          allowFreeform: false,
+        });
+        valueParts = [category, modeResp.answer.trim()];
+      } else {
+        await this.adapter.sendMessage(cmd.channelId, {
+          text: `❌ Please provide a value for \`${field}\``,
+        });
+        return;
+      }
+    }
+
+    if (!valueParts[0]) return;
     const value = valueParts.join(' ');
 
     const updates: Record<string, unknown> = {};
@@ -381,10 +450,19 @@ export class WingmanDaemon {
   // --- Project-channel !command implementations ---
 
   private async cmdSetProjectModel(projectName: string, args: string[], msg: IncomingMessage): Promise<void> {
-    const model = args[0];
+    let model = args[0];
     if (!model) {
-      await this.adapter.sendMessage(msg.channelId, { text: '❌ Usage: !model <model-name>' });
-      return;
+      const models = this.modelRegistry.getAvailable();
+      const project = await this.projectManager.getProject(projectName);
+      const current = project.model;
+      const choices = models.map(m => m === current ? `${m} (current)` : m);
+      const resp = await this.adapter.askQuestion(msg.channelId, msg.threadId ?? msg.channelId, {
+        question: '🤖 Which model?',
+        choices,
+        allowFreeform: true,
+      });
+      model = resp.answer.replace(/\s*\(current\)$/, '').trim();
+      if (!model) return;
     }
     if (!this.modelRegistry.isValid(model)) {
       await this.adapter.sendMessage(msg.channelId, { text: `❌ Unknown model: ${model}` });
@@ -422,10 +500,14 @@ export class WingmanDaemon {
   }
 
   private async cmdSetAgent(projectName: string, args: string[], msg: IncomingMessage): Promise<void> {
-    const agent = args.join(' ');
+    let agent = args.join(' ');
     if (!agent) {
-      await this.adapter.sendMessage(msg.channelId, { text: '❌ Usage: !agent <agent-name>' });
-      return;
+      const resp = await this.adapter.askQuestion(msg.channelId, msg.threadId ?? msg.channelId, {
+        question: `🧩 Enter the agent name for *${projectName}*:`,
+        allowFreeform: true,
+      });
+      agent = resp.answer.trim();
+      if (!agent) return;
     }
     await this.projectManager.updateProjectConfig(projectName, { agent });
     await this.adapter.sendMessage(msg.channelId, { text: `✅ Agent set to \`${agent}\`` });
@@ -433,20 +515,25 @@ export class WingmanDaemon {
 
   private async cmdSetMode(projectName: string, args: string[], msg: IncomingMessage): Promise<void> {
     const validModes: CopilotMode[] = ['normal', 'plan', 'autopilot'];
-    const requested = args[0]?.toLowerCase();
+    let requested = args[0]?.toLowerCase();
 
     if (!requested) {
-      // Show current mode
+      // Show interactive mode picker
       const project = await this.projectManager.getProject(projectName);
       const current = project.mode ?? 'normal';
-      const lines = validModes.map((m) => {
-        const indicator = m === current ? '▸' : '  ';
-        return `${indicator} \`${m}\` — ${MODE_DESCRIPTIONS[m]}`;
+      const choices = validModes.map(m =>
+        m === current ? `${m} — ${MODE_DESCRIPTIONS[m]} (current)` : `${m} — ${MODE_DESCRIPTIONS[m]}`
+      );
+      const resp = await this.adapter.askQuestion(msg.channelId, msg.threadId ?? msg.channelId, {
+        question: `⚡ Select mode for *${projectName}*:`,
+        choices,
+        allowFreeform: false,
       });
-      await this.adapter.sendMessage(msg.channelId, {
-        text: `*Current mode:* \`${current}\`\n\n${lines.join('\n')}`,
-      });
-      return;
+      requested = resp.answer.split(/\s*—/)[0].trim().toLowerCase();
+      if (!requested || requested === current) {
+        await this.adapter.sendMessage(msg.channelId, { text: `Mode unchanged: \`${current}\`` });
+        return;
+      }
     }
 
     if (!validModes.includes(requested as CopilotMode)) {

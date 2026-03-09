@@ -57,6 +57,7 @@ export function SessionTerminal({ lines, onClear, className }: SessionTerminalPr
                 'text-blue-400': g.type === 'answer',
                 'text-purple-400 italic': g.type === 'intent',
                 'text-sky-400 border-l-2 border-sky-700 pl-2': g.type === 'subagent',
+                'text-zinc-500 italic text-center my-1 border-t border-zinc-800 pt-1': g.type === 'history',
               })}
             >
               {g.content}

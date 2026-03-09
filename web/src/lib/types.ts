@@ -34,4 +34,5 @@ export interface SessionEvent {
   choices?: string[]
   description?: string
   output?: string
+  label?: string
 }

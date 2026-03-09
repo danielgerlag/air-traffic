@@ -197,6 +197,22 @@ export function registerApiRoutes(
       }
     }
   });
+
+  // GET /api/projects/:name/history — get conversation history for active session
+  router.get('/projects/:name/history', async (req, res) => {
+    try {
+      const session = deps.orchestrator.getSession(req.params.name);
+      if (!session) {
+        res.json({ history: [], sessionId: null });
+        return;
+      }
+      const history = await session.getHistory();
+      res.json({ history, sessionId: session.getSessionId() });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
 
   // GET /api/sessions — list all Copilot CLI sessions
   router.get('/sessions', async (_req, res) => {

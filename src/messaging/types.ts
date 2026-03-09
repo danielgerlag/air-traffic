@@ -119,6 +119,9 @@ export interface MessagingAdapter {
   // File downloads (from incoming uploads)
   downloadFile(url: string, destPath: string): Promise<void>;
 
+  // Thread status (AI assistant typing indicator)
+  setThreadStatus(channelId: string, threadId: string, status: string, loadingMessages?: string[]): Promise<void>;
+
   // Presence
   reportPresence(): Promise<void>;
   reportStatus(status: MachineStatus): Promise<void>;
