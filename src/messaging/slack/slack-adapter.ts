@@ -626,6 +626,25 @@ export class SlackAdapter extends BaseMessagingAdapter {
       };
       await this.dispatchCommand(cmd);
     });
+
+    // Send welcome + menu when user first opens the Messages tab
+    this.app.event('app_home_opened', async ({ event }) => {
+      const log = getLogger();
+      try {
+        if (event.tab !== 'messages') return;
+        if (this.seenDmUsers.has(event.user)) return;
+        this.seenDmUsers.add(event.user);
+
+        const channelId = event.channel;
+        if (!channelId) return;
+
+        log.debug('App home opened (messages tab)', { user: event.user, channel: channelId });
+        await this.sendMessage(channelId, formatWelcome(this.machineName));
+        await this.sendMessage(channelId, formatMenu(this.machineName));
+      } catch (err) {
+        log.error('Error handling app_home_opened', { error: err });
+      }
+    });
   }
 
   private handlePossibleQuestionReply(msg: IncomingMessage): void {

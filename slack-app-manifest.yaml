@@ -51,6 +51,7 @@ settings:
       - message.channels       # Messages in public channels (prompts in project channels)
       - message.groups         # Messages in private channels
       - message.im             # Direct messages to the bot
+      - app_home_opened        # User opens the app's Messages tab
   interactivity:
     is_enabled: true           # Required for Block Kit button actions
   org_deploy_enabled: false

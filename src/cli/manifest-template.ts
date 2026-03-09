@@ -46,6 +46,7 @@ settings:
       - message.channels
       - message.groups
       - message.im
+      - app_home_opened
   interactivity:
     is_enabled: true
   org_deploy_enabled: false
