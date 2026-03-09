@@ -5,9 +5,9 @@ import { getLogger } from '../utils/logger.js';
 import { SessionError } from '../utils/errors.js';
 
 export interface ExternalSession extends SessionMetadata {
-  /** Whether this session is already managed by Wingman. */
+  /** Whether this session is already managed by Air Traffic. */
   managed: boolean;
-  /** Wingman project name if the session's cwd matches a project path. */
+  /** Air Traffic project name if the session's cwd matches a project path. */
   matchingProject?: string;
 }
 
@@ -76,12 +76,12 @@ export class SessionOrchestrator {
     return [...this.sessions.keys()];
   }
 
-  /** List all Copilot CLI sessions, marking which are Wingman-managed and which match project paths. */
+  /** List all Copilot CLI sessions, marking which are Air Traffic-managed and which match project paths. */
   async listAllSessions(projectPaths?: Map<string, string>): Promise<ExternalSession[]> {
     const client = this.getClient();
     const rawSessions = await client.listSessions();
 
-    // Build a set of session IDs currently managed by Wingman
+    // Build a set of session IDs currently managed by Air Traffic
     const managedSessionIds = new Set<string>();
     for (const session of this.sessions.values()) {
       const sid = session.getSessionId();
@@ -92,7 +92,7 @@ export class SessionOrchestrator {
       const managed = managedSessionIds.has(s.sessionId);
       let matchingProject: string | undefined;
 
-      // Check if the session's cwd matches any Wingman project path
+      // Check if the session's cwd matches any Air Traffic project path
       if (projectPaths && s.context?.cwd) {
         const sessionCwd = s.context.cwd.replace(/\\/g, '/').toLowerCase();
         for (const [name, projPath] of projectPaths) {

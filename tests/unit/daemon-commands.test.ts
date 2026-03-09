@@ -54,7 +54,7 @@ vi.mock('../../src/copilot/agent-session.js', () => {
   return { AgentSession: MockAgentSession };
 });
 
-const { WingmanDaemon } = await import('../../src/daemon.js');
+const { AirTrafficDaemon } = await import('../../src/daemon.js');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -67,7 +67,7 @@ function makeConfig(overrides: { projectsDir: string; dataDir: string }) {
       appToken: 'xapp-test',
       signingSecret: 'test-secret',
     },
-    wingman: {
+    airTraffic: {
       machineName: 'test-machine',
       projectsDir: overrides.projectsDir,
       dataDir: overrides.dataDir,
@@ -93,7 +93,7 @@ function makeCommand(
     args,
     rawText: `test-machine: ${command} ${args.join(' ')}`.trim(),
     channelId: overrides.channelId ?? 'C-control',
-    channelName: overrides.channelName ?? 'wingman-control',
+    channelName: overrides.channelName ?? 'air-traffic-control',
     userId: overrides.userId ?? 'U-1',
     messageId: 'msg-test',
   };
@@ -106,10 +106,10 @@ function makeCommand(
 describe('Interactive pickers (parameter-less commands)', () => {
   let tmpDir: string;
   let adapter: InMemoryMessagingAdapter;
-  let daemon: InstanceType<typeof WingmanDaemon>;
+  let daemon: InstanceType<typeof AirTrafficDaemon>;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wingman-pick-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'atc-pick-'));
     const projectsDir = path.join(tmpDir, 'projects');
     const dataDir = path.join(tmpDir, 'data');
     await fs.mkdir(projectsDir, { recursive: true });
@@ -117,7 +117,7 @@ describe('Interactive pickers (parameter-less commands)', () => {
 
     adapter = new InMemoryMessagingAdapter('test-machine');
     const config = makeConfig({ projectsDir, dataDir });
-    daemon = new WingmanDaemon(config, adapter);
+    daemon = new AirTrafficDaemon(config, adapter);
     await daemon.start();
   });
 
@@ -170,7 +170,7 @@ describe('Interactive pickers (parameter-less commands)', () => {
     // Send model command without args from the project channel
     await adapter.simulateIncomingCommand(makeCommand('model', [], {
       channelId: project.channelId,
-      channelName: `wm-test-machine-model-test`,
+      channelName: `atc-test-machine-model-test`,
     }));
 
     // Should have asked a question with model choices
@@ -199,7 +199,7 @@ describe('Interactive pickers (parameter-less commands)', () => {
     // Send mode command without args
     await adapter.simulateIncomingCommand(makeCommand('mode', [], {
       channelId: project.channelId,
-      channelName: `wm-test-machine-mode-test`,
+      channelName: `atc-test-machine-mode-test`,
     }));
 
     // Should have asked a question with mode choices
@@ -228,7 +228,7 @@ describe('Interactive pickers (parameter-less commands)', () => {
     // Send agent command without args
     await adapter.simulateIncomingCommand(makeCommand('agent', [], {
       channelId: project.channelId,
-      channelName: `wm-test-machine-agent-test`,
+      channelName: `atc-test-machine-agent-test`,
     }));
 
     // Should have asked a question
@@ -316,10 +316,10 @@ describe('Interactive pickers (parameter-less commands)', () => {
 describe('Command routing in control channel', () => {
   let tmpDir: string;
   let adapter: InMemoryMessagingAdapter;
-  let daemon: InstanceType<typeof WingmanDaemon>;
+  let daemon: InstanceType<typeof AirTrafficDaemon>;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wingman-route-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'atc-route-'));
     const projectsDir = path.join(tmpDir, 'projects');
     const dataDir = path.join(tmpDir, 'data');
     await fs.mkdir(projectsDir, { recursive: true });
@@ -327,7 +327,7 @@ describe('Command routing in control channel', () => {
 
     adapter = new InMemoryMessagingAdapter('test-machine');
     const config = makeConfig({ projectsDir, dataDir });
-    daemon = new WingmanDaemon(config, adapter);
+    daemon = new AirTrafficDaemon(config, adapter);
     await daemon.start();
   });
 
@@ -355,7 +355,7 @@ describe('Command routing in control channel', () => {
   it('help command returns help text', async () => {
     await adapter.simulateIncomingCommand(makeCommand('help'));
     const msg = adapter.getLastMessage();
-    expect(msg!.content.text).toMatch(/Wingman Commands/);
+    expect(msg!.content.text).toMatch(/Air Traffic Commands/);
     expect(msg!.content.text).toMatch(/create/);
     expect(msg!.content.text).toMatch(/delete/);
   });
@@ -378,10 +378,10 @@ describe('Command routing in control channel', () => {
 describe('Project channel command routing', () => {
   let tmpDir: string;
   let adapter: InMemoryMessagingAdapter;
-  let daemon: InstanceType<typeof WingmanDaemon>;
+  let daemon: InstanceType<typeof AirTrafficDaemon>;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wingman-proj-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'atc-proj-'));
     const projectsDir = path.join(tmpDir, 'projects');
     const dataDir = path.join(tmpDir, 'data');
     await fs.mkdir(projectsDir, { recursive: true });
@@ -389,7 +389,7 @@ describe('Project channel command routing', () => {
 
     adapter = new InMemoryMessagingAdapter('test-machine');
     const config = makeConfig({ projectsDir, dataDir });
-    daemon = new WingmanDaemon(config, adapter);
+    daemon = new AirTrafficDaemon(config, adapter);
     await daemon.start();
 
     // Create a test project for project-channel commands
@@ -406,7 +406,7 @@ describe('Project channel command routing', () => {
     const project = await daemon.getProjectManager().getProject('my-proj');
     await adapter.simulateIncomingCommand(makeCommand('status', [], {
       channelId: project.channelId,
-      channelName: 'wm-test-machine-my-proj',
+      channelName: 'atc-test-machine-my-proj',
     }));
     const msg = adapter.getLastMessage();
     expect(msg!.content.text).toMatch(/my-proj/);
@@ -417,7 +417,7 @@ describe('Project channel command routing', () => {
     const project = await daemon.getProjectManager().getProject('my-proj');
     await adapter.simulateIncomingCommand(makeCommand('model', ['gpt-5'], {
       channelId: project.channelId,
-      channelName: 'wm-test-machine-my-proj',
+      channelName: 'atc-test-machine-my-proj',
     }));
     const msg = adapter.getLastMessage();
     expect(msg!.content.text).toMatch(/gpt-5/);
@@ -428,7 +428,7 @@ describe('Project channel command routing', () => {
     const project = await daemon.getProjectManager().getProject('my-proj');
     await adapter.simulateIncomingCommand(makeCommand('mode', ['plan'], {
       channelId: project.channelId,
-      channelName: 'wm-test-machine-my-proj',
+      channelName: 'atc-test-machine-my-proj',
     }));
     const msg = adapter.getLastMessage();
     expect(msg!.content.text).toMatch(/plan/);
@@ -439,7 +439,7 @@ describe('Project channel command routing', () => {
     const project = await daemon.getProjectManager().getProject('my-proj');
     await adapter.simulateIncomingCommand(makeCommand('mode', ['foobar'], {
       channelId: project.channelId,
-      channelName: 'wm-test-machine-my-proj',
+      channelName: 'atc-test-machine-my-proj',
     }));
     const msg = adapter.getLastMessage();
     expect(msg!.content.text).toMatch(/Unknown mode/i);
@@ -449,7 +449,7 @@ describe('Project channel command routing', () => {
     const project = await daemon.getProjectManager().getProject('my-proj');
     await adapter.simulateIncomingCommand(makeCommand('agent', ['my-agent'], {
       channelId: project.channelId,
-      channelName: 'wm-test-machine-my-proj',
+      channelName: 'atc-test-machine-my-proj',
     }));
     const msg = adapter.getLastMessage();
     expect(msg!.content.text).toMatch(/my-agent/);
@@ -460,7 +460,7 @@ describe('Project channel command routing', () => {
     const project = await daemon.getProjectManager().getProject('my-proj');
     await adapter.simulateIncomingCommand(makeCommand('abort', [], {
       channelId: project.channelId,
-      channelName: 'wm-test-machine-my-proj',
+      channelName: 'atc-test-machine-my-proj',
     }));
     const msg = adapter.getLastMessage();
     expect(msg!.content.text).toMatch(/no active session/i);
@@ -470,7 +470,7 @@ describe('Project channel command routing', () => {
     const project = await daemon.getProjectManager().getProject('my-proj');
     await adapter.simulateIncomingCommand(makeCommand('leave', [], {
       channelId: project.channelId,
-      channelName: 'wm-test-machine-my-proj',
+      channelName: 'atc-test-machine-my-proj',
     }));
     const msg = adapter.getLastMessage();
     expect(msg!.content.text).toMatch(/no active session/i);

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createLogger, getLogger } from '../../src/utils/logger.js';
 import {
-  WingmanError,
+  AirTrafficError,
   ConfigError,
   ProjectError,
   SessionError,
@@ -26,11 +26,11 @@ describe('Logger', () => {
 });
 
 describe('Errors', () => {
-  it('should create WingmanError with code', () => {
-    const err = new WingmanError('test', 'TEST_CODE');
+  it('should create AirTrafficError with code', () => {
+    const err = new AirTrafficError('test', 'TEST_CODE');
     expect(err.message).toBe('test');
     expect(err.code).toBe('TEST_CODE');
-    expect(err.name).toBe('WingmanError');
+    expect(err.name).toBe('AirTrafficError');
     expect(err).toBeInstanceOf(Error);
   });
 
@@ -38,36 +38,36 @@ describe('Errors', () => {
     const err = new ConfigError('bad config');
     expect(err.code).toBe('CONFIG_ERROR');
     expect(err.name).toBe('ConfigError');
-    expect(err).toBeInstanceOf(WingmanError);
+    expect(err).toBeInstanceOf(AirTrafficError);
   });
 
   it('should create ProjectError', () => {
     const err = new ProjectError('project not found');
     expect(err.code).toBe('PROJECT_ERROR');
-    expect(err).toBeInstanceOf(WingmanError);
+    expect(err).toBeInstanceOf(AirTrafficError);
   });
 
   it('should create SessionError', () => {
     const err = new SessionError('session failed');
     expect(err.code).toBe('SESSION_ERROR');
-    expect(err).toBeInstanceOf(WingmanError);
+    expect(err).toBeInstanceOf(AirTrafficError);
   });
 
   it('should create MessagingError', () => {
     const err = new MessagingError('messaging failed');
     expect(err.code).toBe('MESSAGING_ERROR');
-    expect(err).toBeInstanceOf(WingmanError);
+    expect(err).toBeInstanceOf(AirTrafficError);
   });
 
   it('should create PermissionError', () => {
     const err = new PermissionError('denied');
     expect(err.code).toBe('PERMISSION_ERROR');
-    expect(err).toBeInstanceOf(WingmanError);
+    expect(err).toBeInstanceOf(AirTrafficError);
   });
 
   it('should create TimeoutError', () => {
     const err = new TimeoutError('timed out');
     expect(err.code).toBe('TIMEOUT_ERROR');
-    expect(err).toBeInstanceOf(WingmanError);
+    expect(err).toBeInstanceOf(AirTrafficError);
   });
 });

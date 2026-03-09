@@ -36,7 +36,7 @@ describe('toolCallLabel extraction logic', () => {
   });
 
   it('extracts basename from path', () => {
-    expect(toolCallLabel('view', { path: 'C:\\dev\\wingman\\src\\daemon.ts' })).toBe('daemon.ts');
+    expect(toolCallLabel('view', { path: 'C:\\dev\\air-traffic\\src\\daemon.ts' })).toBe('daemon.ts');
   });
 
   it('extracts basename from file_path', () => {

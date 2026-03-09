@@ -267,36 +267,36 @@ describe('parseProjectChannelMessage', () => {
 
 describe('isProjectChannel', () => {
   it('returns true for matching machine prefix', () => {
-    expect(isProjectChannel('wm-desktop-my-app', 'desktop')).toBe(true);
+    expect(isProjectChannel('atc-desktop-my-app', 'desktop')).toBe(true);
   });
 
   it('returns false for different machine', () => {
-    expect(isProjectChannel('wm-laptop-api', 'desktop')).toBe(false);
+    expect(isProjectChannel('atc-laptop-api', 'desktop')).toBe(false);
   });
 
   it('returns false for control channel', () => {
-    expect(isProjectChannel('wingman-control', 'desktop')).toBe(false);
+    expect(isProjectChannel('air-traffic-control', 'desktop')).toBe(false);
   });
 
   it('returns false when machine does not match', () => {
-    expect(isProjectChannel('wm-desktop-my-app', 'laptop')).toBe(false);
+    expect(isProjectChannel('atc-desktop-my-app', 'laptop')).toBe(false);
   });
 });
 
 describe('extractProjectName', () => {
   it('extracts project name from matching channel', () => {
-    expect(extractProjectName('wm-desktop-my-app', 'desktop')).toBe('my-app');
+    expect(extractProjectName('atc-desktop-my-app', 'desktop')).toBe('my-app');
   });
 
   it('extracts complex project name', () => {
-    expect(extractProjectName('wm-desktop-complex-name', 'desktop')).toBe('complex-name');
+    expect(extractProjectName('atc-desktop-complex-name', 'desktop')).toBe('complex-name');
   });
 
   it('returns null for different machine', () => {
-    expect(extractProjectName('wm-laptop-api', 'desktop')).toBeNull();
+    expect(extractProjectName('atc-laptop-api', 'desktop')).toBeNull();
   });
 
   it('returns null for control channel', () => {
-    expect(extractProjectName('wingman-control', 'desktop')).toBeNull();
+    expect(extractProjectName('air-traffic-control', 'desktop')).toBeNull();
   });
 });

@@ -1,19 +1,19 @@
 import { loadConfig } from './config.js';
 import { createLogger } from './utils/logger.js';
 import { SlackAdapter } from './messaging/slack/slack-adapter.js';
-import { WingmanDaemon } from './daemon.js';
+import { AirTrafficDaemon } from './daemon.js';
 
 const config = loadConfig();
-const log = createLogger(config.wingman.logLevel, config.wingman.machineName);
+const log = createLogger(config.airTraffic.logLevel, config.airTraffic.machineName);
 
 const adapter = new SlackAdapter({
   botToken: config.slack.botToken,
   appToken: config.slack.appToken,
   signingSecret: config.slack.signingSecret,
-  machineName: config.wingman.machineName,
+  machineName: config.airTraffic.machineName,
 });
 
-const daemon = new WingmanDaemon(config, adapter);
+const daemon = new AirTrafficDaemon(config, adapter);
 
 async function shutdown(signal: string): Promise<void> {
   log.info(`Received ${signal}, shutting down...`);
@@ -29,4 +29,4 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
 await daemon.start();
-log.info(`Wingman is ready — machine: ${config.wingman.machineName}`);
+log.info(`Air Traffic is ready — machine: ${config.airTraffic.machineName}`);

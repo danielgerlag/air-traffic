@@ -65,7 +65,7 @@ export class WebServer {
     return new Promise((resolve) => {
       this.httpServer.listen(port, () => {
         getLogger().info(
-          `Wingman Console running at http://localhost:${port}`,
+          `Air Traffic Console running at http://localhost:${port}`,
         );
         resolve();
       });

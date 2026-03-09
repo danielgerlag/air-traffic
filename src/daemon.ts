@@ -1,6 +1,6 @@
 import { simpleGit } from 'simple-git';
 import path from 'node:path';
-import type { WingmanConfig } from './config.js';
+import type { AirTrafficConfig } from './config.js';
 import type { MessagingAdapter, IncomingMessage, IncomingCommand } from './messaging/types.js';
 import { ProjectManager } from './projects/project-manager.js';
 import { SessionOrchestrator } from './copilot/session-orchestrator.js';
@@ -17,7 +17,7 @@ import { WebServer } from './web/server.js';
 import { SessionBridge } from './web/session-bridge.js';
 import { getLogger } from './utils/logger.js';
 
-export class WingmanDaemon {
+export class AirTrafficDaemon {
   private readonly projectManager: ProjectManager;
   private readonly orchestrator: SessionOrchestrator;
   private readonly permissionManager: PermissionManager;
@@ -27,13 +27,13 @@ export class WingmanDaemon {
   private sessionBridge: SessionBridge | null = null;
 
   constructor(
-    private readonly config: WingmanConfig,
+    private readonly config: AirTrafficConfig,
     private readonly adapter: MessagingAdapter,
   ) {
     this.projectManager = new ProjectManager(
-      config.wingman.projectsDir,
-      config.wingman.dataDir,
-      config.wingman.defaultModel,
+      config.airTraffic.projectsDir,
+      config.airTraffic.dataDir,
+      config.airTraffic.defaultModel,
       adapter,
     );
     this.orchestrator = new SessionOrchestrator();
@@ -59,14 +59,14 @@ export class WingmanDaemon {
       orchestrator: this.orchestrator,
       modelRegistry: this.modelRegistry,
       permissionManager: this.permissionManager,
-      machineName: this.config.wingman.machineName,
+      machineName: this.config.airTraffic.machineName,
       adapter: this.adapter,
-      config: { webPort: this.config.wingman.webPort },
+      config: { webPort: this.config.airTraffic.webPort },
     });
     this.sessionBridge = new SessionBridge(this.webServer.getIO());
     await this.webServer.start();
 
-    log.info(`Wingman daemon started on machine "${this.config.wingman.machineName}"`);
+    log.info(`Air Traffic daemon started on machine "${this.config.airTraffic.machineName}"`);
   }
 
   async stop(): Promise<void> {
@@ -78,7 +78,7 @@ export class WingmanDaemon {
     await this.orchestrator.stop();
     await this.adapter.disconnect();
 
-    log.info('Wingman daemon stopped');
+    log.info('Air Traffic daemon stopped');
   }
 
   // --- Command routing ---
@@ -86,8 +86,8 @@ export class WingmanDaemon {
   private async handleCommand(cmd: IncomingCommand): Promise<void> {
     const log = getLogger();
 
-    // Check if this command came from a project channel (e.g. via /wm slash command)
-    const projectName = extractProjectName(cmd.channelName, this.config.wingman.machineName);
+    // Check if this command came from a project channel (e.g. via /atc slash command)
+    const projectName = extractProjectName(cmd.channelName, this.config.airTraffic.machineName);
     if (projectName) {
       try {
         const msg: IncomingMessage = {
@@ -134,7 +134,7 @@ export class WingmanDaemon {
           await this.postAvailableModels(cmd.channelId);
           break;
         case 'help':
-          await this.adapter.sendMessage(cmd.channelId, formatControlHelp(this.config.wingman.machineName));
+          await this.adapter.sendMessage(cmd.channelId, formatControlHelp(this.config.airTraffic.machineName));
           break;
         default:
           log.warn(`Unknown targeted command: ${cmd.command}`);
@@ -171,7 +171,7 @@ export class WingmanDaemon {
 
   private async handleMessage(msg: IncomingMessage): Promise<void> {
     const log = getLogger();
-    const projectName = extractProjectName(msg.channelName, this.config.wingman.machineName);
+    const projectName = extractProjectName(msg.channelName, this.config.airTraffic.machineName);
     if (!projectName) return;
 
     try {
@@ -285,7 +285,7 @@ export class WingmanDaemon {
     const fromIdx = args.indexOf('--from');
     const repoUrl = fromIdx !== -1 && args[fromIdx + 1] ? args[fromIdx + 1] : undefined;
 
-    const project = await this.projectManager.createProject(name, this.config.wingman.machineName, { repoUrl });
+    const project = await this.projectManager.createProject(name, this.config.airTraffic.machineName, { repoUrl });
     await this.adapter.sendMessage(cmd.channelId, {
       text: `✅ Project "${project.name}" created → <#${project.channelId}>`,
     });
@@ -593,7 +593,7 @@ export class WingmanDaemon {
     });
 
     await this.adapter.sendMessage(channelId, {
-      text: `📋 *Copilot Sessions* (${sessions.length}):\n${lines.join('\n')}\n\n_Use \`/wm join <session-id>\` to join one._`,
+      text: `📋 *Copilot Sessions* (${sessions.length}):\n${lines.join('\n')}\n\n_Use \`/atc join <session-id>\` to join one._`,
     });
   }
 
@@ -659,7 +659,7 @@ export class WingmanDaemon {
 
     if (matches.length === 0) {
       await this.adapter.sendMessage(msg.channelId, {
-        text: `❌ No session found matching \`${sessionIdPrefix}\`. Use \`/wm sessions\` to list.`,
+        text: `❌ No session found matching \`${sessionIdPrefix}\`. Use \`/atc sessions\` to list.`,
       });
       return;
     }
@@ -673,7 +673,7 @@ export class WingmanDaemon {
     const targetSession = matches[0];
     if (targetSession.managed) {
       await this.adapter.sendMessage(msg.channelId, {
-        text: `⚠️ Session \`${targetSession.sessionId.slice(0, 8)}\` is already managed by Wingman.`,
+        text: `⚠️ Session \`${targetSession.sessionId.slice(0, 8)}\` is already managed by Air Traffic.`,
       });
       return;
     }
@@ -699,8 +699,8 @@ export class WingmanDaemon {
         try {
           await this.projectManager.getProject(resolvedProjectName);
         } catch {
-          const projectPath = targetSession.context?.cwd ?? path.join(this.config.wingman.projectsDir, resolvedProjectName);
-          await this.projectManager.createProject(resolvedProjectName, this.config.wingman.machineName, undefined, projectPath);
+          const projectPath = targetSession.context?.cwd ?? path.join(this.config.airTraffic.projectsDir, resolvedProjectName);
+          await this.projectManager.createProject(resolvedProjectName, this.config.airTraffic.machineName, undefined, projectPath);
           await this.adapter.sendMessage(msg.channelId, {
             text: `📁 Created project *${resolvedProjectName}* at \`${projectPath}\``,
           });
@@ -819,13 +819,13 @@ export class WingmanDaemon {
     const activeSessions = this.orchestrator.getActiveSessionCount();
     const projects = this.orchestrator.getActiveProjectNames();
     const status = {
-      machineName: this.config.wingman.machineName,
+      machineName: this.config.airTraffic.machineName,
       online: true,
       activeSessions,
       projects,
       lastSeen: new Date(),
     };
-    const content = formatMachineStatus(this.config.wingman.machineName, status);
+    const content = formatMachineStatus(this.config.airTraffic.machineName, status);
     await this.adapter.sendMessage(channelId, content);
   }
 

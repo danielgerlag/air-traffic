@@ -84,6 +84,6 @@ export abstract class BaseMessagingAdapter implements MessagingAdapter {
 
   // Helper: generate project channel name
   protected projectChannelName(machineName: string, projectName: string): string {
-    return `wm-${machineName}-${projectName}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    return `atc-${machineName}-${projectName}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
   }
 }

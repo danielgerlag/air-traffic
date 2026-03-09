@@ -66,12 +66,12 @@ export function parseProjectChannelMessage(
 }
 
 export function isProjectChannel(channelName: string, machineName: string): boolean {
-  const prefix = `wm-${machineName}-`.toLowerCase();
+  const prefix = `atc-${machineName}-`.toLowerCase();
   return channelName.toLowerCase().startsWith(prefix) && channelName.length > prefix.length;
 }
 
 export function extractProjectName(channelName: string, machineName: string): string | null {
-  const prefix = `wm-${machineName}-`.toLowerCase();
+  const prefix = `atc-${machineName}-`.toLowerCase();
   const lower = channelName.toLowerCase();
   if (!lower.startsWith(prefix)) return null;
   const project = channelName.slice(prefix.length);

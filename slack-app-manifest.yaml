@@ -1,24 +1,24 @@
 display_information:
-  name: Wingman
+  name: Air Traffic
   description: Remote GitHub Copilot orchestration via Slack
   background_color: "#1a1a2e"
   long_description: |
-    Wingman lets you orchestrate GitHub Copilot CLI agents on your machines
+    Air Traffic lets you orchestrate GitHub Copilot CLI agents on your machines
     remotely from Slack — including from your phone. Create per-project channels,
     send prompts, approve tool executions, and manage multiple machines from a
     single Slack workspace.
 
 features:
   bot_user:
-    display_name: Wingman
+    display_name: Air Traffic
     always_online: true
   app_home:
     home_tab_enabled: false
     messages_tab_enabled: true
     messages_tab_read_only_enabled: false
   slash_commands:
-    - command: /wm
-      description: Wingman — manage projects and Copilot sessions
+    - command: /atc
+      description: Air Traffic — manage projects and Copilot sessions
       usage_hint: "[machine:] <command> [args] — e.g. create my-app, status, model gpt-5"
       should_escape: false
 
@@ -58,5 +58,5 @@ settings:
   interactivity:
     is_enabled: true           # Required for Block Kit button actions
   org_deploy_enabled: false
-  socket_mode_enabled: true    # Required — Wingman uses Socket Mode (no public URL needed)
+  socket_mode_enabled: true    # Required — Air Traffic uses Socket Mode (no public URL needed)
   token_rotation_enabled: false

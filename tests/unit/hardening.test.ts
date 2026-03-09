@@ -10,7 +10,7 @@ import { createLogger } from '../../src/utils/logger.js';
 createLogger('error', 'test');
 
 // ---------------------------------------------------------------------------
-// Mock heavy dependencies that WingmanDaemon imports
+// Mock heavy dependencies that AirTrafficDaemon imports
 // ---------------------------------------------------------------------------
 
 // Mock simple-git (used by daemon's !diff command)
@@ -53,8 +53,8 @@ vi.mock('../../src/copilot/agent-session.js', () => {
   return { AgentSession: MockAgentSession };
 });
 
-// Now import WingmanDaemon (after mocks are in place)
-const { WingmanDaemon } = await import('../../src/daemon.js');
+// Now import AirTrafficDaemon (after mocks are in place)
+const { AirTrafficDaemon } = await import('../../src/daemon.js');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -67,7 +67,7 @@ function makeConfig(overrides: { projectsDir: string; dataDir: string }) {
       appToken: 'xapp-test',
       signingSecret: 'test-secret',
     },
-    wingman: {
+    airTraffic: {
       machineName: 'test-machine',
       projectsDir: overrides.projectsDir,
       dataDir: overrides.dataDir,
@@ -131,13 +131,13 @@ describe('Hardening', () => {
 
   // ---- Daemon error resilience ----
 
-  describe('WingmanDaemon error resilience', () => {
+  describe('AirTrafficDaemon error resilience', () => {
     let tmpDir: string;
     let adapter: InMemoryMessagingAdapter;
-    let daemon: InstanceType<typeof WingmanDaemon>;
+    let daemon: InstanceType<typeof AirTrafficDaemon>;
 
     beforeEach(async () => {
-      tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wingman-hard-'));
+      tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'atc-hard-'));
       const projectsDir = path.join(tmpDir, 'projects');
       const dataDir = path.join(tmpDir, 'data');
       await fs.mkdir(projectsDir, { recursive: true });
@@ -145,7 +145,7 @@ describe('Hardening', () => {
 
       adapter = new InMemoryMessagingAdapter('test-machine');
       const config = makeConfig({ projectsDir, dataDir });
-      daemon = new WingmanDaemon(config, adapter);
+      daemon = new AirTrafficDaemon(config, adapter);
       await daemon.start();
     });
 
@@ -163,7 +163,7 @@ describe('Hardening', () => {
         args: ['INVALID_NAME'],
         rawText: 'test-machine: create INVALID_NAME',
         channelId: 'C-control',
-        channelName: 'wingman-control',
+        channelName: 'air-traffic-control',
         userId: 'U-1',
         messageId: 'msg-1',
       });
@@ -182,7 +182,7 @@ describe('Hardening', () => {
         args: ['BAD!'],
         rawText: 'test-machine: create BAD!',
         channelId: 'C-control',
-        channelName: 'wingman-control',
+        channelName: 'air-traffic-control',
         userId: 'U-1',
         messageId: 'msg-1',
       });
@@ -198,7 +198,7 @@ describe('Hardening', () => {
         args: ['good-project'],
         rawText: 'test-machine: create good-project',
         channelId: 'C-control',
-        channelName: 'wingman-control',
+        channelName: 'air-traffic-control',
         userId: 'U-2',
         messageId: 'msg-2',
       });
@@ -216,7 +216,7 @@ describe('Hardening', () => {
         args: ['no-such-project'],
         rawText: 'test-machine: delete no-such-project',
         channelId: 'C-control',
-        channelName: 'wingman-control',
+        channelName: 'air-traffic-control',
         userId: 'U-1',
         messageId: 'msg-1',
       });
@@ -233,7 +233,7 @@ describe('Hardening', () => {
         args: [],
         rawText: 'status',
         channelId: 'C-control',
-        channelName: 'wingman-control',
+        channelName: 'air-traffic-control',
         userId: 'U-1',
         messageId: 'msg-1',
       });
@@ -249,10 +249,10 @@ describe('Hardening', () => {
   describe('Session cleanup on project deletion', () => {
     let tmpDir: string;
     let adapter: InMemoryMessagingAdapter;
-    let daemon: InstanceType<typeof WingmanDaemon>;
+    let daemon: InstanceType<typeof AirTrafficDaemon>;
 
     beforeEach(async () => {
-      tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wingman-sess-'));
+      tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'atc-sess-'));
       const projectsDir = path.join(tmpDir, 'projects');
       const dataDir = path.join(tmpDir, 'data');
       await fs.mkdir(projectsDir, { recursive: true });
@@ -260,7 +260,7 @@ describe('Hardening', () => {
 
       adapter = new InMemoryMessagingAdapter('test-machine');
       const config = makeConfig({ projectsDir, dataDir });
-      daemon = new WingmanDaemon(config, adapter);
+      daemon = new AirTrafficDaemon(config, adapter);
       await daemon.start();
     });
 
@@ -278,7 +278,7 @@ describe('Hardening', () => {
         args: ['my-app'],
         rawText: 'test-machine: create my-app',
         channelId: 'C-control',
-        channelName: 'wingman-control',
+        channelName: 'air-traffic-control',
         userId: 'U-1',
         messageId: 'msg-1',
       });
@@ -294,7 +294,7 @@ describe('Hardening', () => {
         args: ['my-app'],
         rawText: 'test-machine: delete my-app',
         channelId: 'C-control',
-        channelName: 'wingman-control',
+        channelName: 'air-traffic-control',
         userId: 'U-1',
         messageId: 'msg-2',
       });
@@ -315,7 +315,7 @@ describe('Hardening', () => {
         args: ['cycle-test'],
         rawText: 'test-machine: create cycle-test',
         channelId: 'C-control',
-        channelName: 'wingman-control',
+        channelName: 'air-traffic-control',
         userId: 'U-1',
         messageId: 'msg-1',
       });
@@ -329,7 +329,7 @@ describe('Hardening', () => {
         args: ['cycle-test'],
         rawText: 'test-machine: delete cycle-test',
         channelId: 'C-control',
-        channelName: 'wingman-control',
+        channelName: 'air-traffic-control',
         userId: 'U-1',
         messageId: 'msg-2',
       });
@@ -343,7 +343,7 @@ describe('Hardening', () => {
         args: ['cycle-test'],
         rawText: 'test-machine: create cycle-test',
         channelId: 'C-control',
-        channelName: 'wingman-control',
+        channelName: 'air-traffic-control',
         userId: 'U-1',
         messageId: 'msg-3',
       });

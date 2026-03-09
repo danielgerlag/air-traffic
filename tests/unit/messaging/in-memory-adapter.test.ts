@@ -24,7 +24,7 @@ describe('InMemoryMessagingAdapter', () => {
   describe('channels', () => {
     it('should create project channels with correct naming', async () => {
       const channel = await adapter.createProjectChannel('desktop', 'my-app');
-      expect(channel.name).toBe('wm-desktop-my-app');
+      expect(channel.name).toBe('atc-desktop-my-app');
       expect(channel.id).toBeTruthy();
       expect(adapter.createdChannels).toHaveLength(1);
       expect(adapter.createdChannels[0].machineName).toBe('desktop');
@@ -164,7 +164,7 @@ describe('InMemoryMessagingAdapter', () => {
 
       await adapter.simulateIncomingMessage({
         channelId: 'C-1',
-        channelName: 'wm-test-machine-app',
+        channelName: 'atc-test-machine-app',
         userId: 'U-1',
         text: 'Add authentication',
         messageId: 'msg-1',
@@ -185,7 +185,7 @@ describe('InMemoryMessagingAdapter', () => {
         args: ['my-app'],
         rawText: 'test-machine: create my-app',
         channelId: 'C-control',
-        channelName: 'wingman-control',
+        channelName: 'air-traffic-control',
         userId: 'U-1',
         messageId: 'msg-1',
       });
@@ -203,7 +203,7 @@ describe('InMemoryMessagingAdapter', () => {
         args: [],
         rawText: 'status',
         channelId: 'C-control',
-        channelName: 'wingman-control',
+        channelName: 'air-traffic-control',
         userId: 'U-1',
         messageId: 'msg-1',
       });

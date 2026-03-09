@@ -187,20 +187,20 @@ export function formatMachineStatus(machineName: string, status: MachineStatus):
 
 export function formatControlHelp(machineName: string): MessageContent {
   const text = [
-    `📖 *Wingman Commands* — machine: \`${machineName}\``,
+    `📖 *Air Traffic Commands* — machine: \`${machineName}\``,
     '',
     '*Project management*',
-    '`/wm create <name> [--from <repo-url>]` — Create a new project',
-    '`/wm delete [name]` — Delete a project (picker if omitted)',
-    '`/wm list` — List all projects',
-    '`/wm config [project] [field] [value]` — Update config (guided wizard if omitted)',
+    '`/atc create <name> [--from <repo-url>]` — Create a new project',
+    '`/atc delete [name]` — Delete a project (picker if omitted)',
+    '`/atc list` — List all projects',
+    '`/atc config [project] [field] [value]` — Update config (guided wizard if omitted)',
     '',
     '*Machine*',
-    '`/wm status` — Show machine status',
-    '`/wm models` — List available models',
-    '`/wm sessions` — List all Copilot CLI sessions',
-    '`/wm join [session-id]` — Join a session (picker if omitted)',
-    '`/wm help` — Show this help',
+    '`/atc status` — Show machine status',
+    '`/atc models` — List available models',
+    '`/atc sessions` — List all Copilot CLI sessions',
+    '`/atc join [session-id]` — Join a session (picker if omitted)',
+    '`/atc help` — Show this help',
     '',
     '_Omit parameters for an interactive picker. In a project channel, commands apply to that project directly._',
   ].join('\n');
@@ -218,19 +218,19 @@ export function formatProjectHelp(projectName: string): MessageContent {
     `📖 *Project Commands* — \`${projectName}\``,
     '',
     '*Session*',
-    '`/wm status` — Project & session status',
-    '`/wm abort` — Abort the current session',
-    '`/wm sessions` — List all Copilot CLI sessions',
-    '`/wm join [session-id]` — Join a session (picker if omitted)',
-    '`/wm leave` — Detach without killing the session',
-    '`/wm history` — Show session history',
-    '`/wm diff` — Show git diff',
+    '`/atc status` — Project & session status',
+    '`/atc abort` — Abort the current session',
+    '`/atc sessions` — List all Copilot CLI sessions',
+    '`/atc join [session-id]` — Join a session (picker if omitted)',
+    '`/atc leave` — Detach without killing the session',
+    '`/atc history` — Show session history',
+    '`/atc diff` — Show git diff',
     '',
     '*Config*',
-    '`/wm model [name]` — Change model (picker if omitted)',
-    '`/wm agent [name]` — Change agent (prompts if omitted)',
-    '`/wm mode [normal|plan|autopilot]` — Change mode (picker if omitted)',
-    '`/wm help` — Show this help',
+    '`/atc model [name]` — Change model (picker if omitted)',
+    '`/atc agent [name]` — Change agent (prompts if omitted)',
+    '`/atc mode [normal|plan|autopilot]` — Change mode (picker if omitted)',
+    '`/atc help` — Show this help',
     '',
     '_Omit parameters for an interactive picker. Or just type a message to send a prompt to Copilot._',
   ].join('\n');
@@ -248,7 +248,7 @@ export function formatUnknownCommand(input: string, suggestions: string[]): Mess
   if (suggestions.length > 0) {
     text += `\nDid you mean: ${suggestions.map((s) => `\`${s}\``).join(', ')}?`;
   }
-  text += '\nType `/wm help` for a list of commands.';
+  text += '\nType `/atc help` for a list of commands.';
   return {
     text,
     blocks: [

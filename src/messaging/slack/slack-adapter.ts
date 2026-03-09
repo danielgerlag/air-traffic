@@ -296,8 +296,8 @@ export class SlackAdapter extends BaseMessagingAdapter {
   private registerEventHandlers(): void {
     if (!this.app) return;
 
-    // Handle /wm slash command
-    this.app.command('/wm', async ({ command, ack }) => {
+    // Handle /atc slash command
+    this.app.command('/atc', async ({ command, ack }) => {
       await ack();
 
       const channelId = command.channel_id;

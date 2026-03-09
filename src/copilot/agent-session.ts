@@ -31,7 +31,7 @@ function toolCallLabel(toolName: string, toolArgs: Record<string, unknown>): str
 /** System preamble injected to give Copilot context about the bridged remote interaction. */
 function buildSystemPreamble(project: ProjectConfig): string {
   return [
-    '<wingman_context>',
+    '<air_traffic_context>',
     'You are being operated remotely through a messaging bridge (e.g. Slack).',
     'The user is NOT at the local machine — they can only see what you send back through the messaging channel.',
     '',
@@ -55,7 +55,7 @@ function buildSystemPreamble(project: ProjectConfig): string {
     '• Do NOT use HTML tags — Slack strips them.',
     '• Block quotes: prefix lines with > for quoted text.',
     '• Keep messages concise — Slack truncates very long messages.',
-    '</wingman_context>',
+    '</air_traffic_context>',
   ].join('\n');
 }
 

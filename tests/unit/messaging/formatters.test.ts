@@ -12,15 +12,15 @@ describe('formatControlHelp', () => {
   });
 
   it('lists all control commands', () => {
-    expect(help.text).toContain('/wm create');
-    expect(help.text).toContain('/wm delete');
-    expect(help.text).toContain('/wm list');
-    expect(help.text).toContain('/wm config');
-    expect(help.text).toContain('/wm status');
-    expect(help.text).toContain('/wm models');
-    expect(help.text).toContain('/wm sessions');
-    expect(help.text).toContain('/wm join');
-    expect(help.text).toContain('/wm help');
+    expect(help.text).toContain('/atc create');
+    expect(help.text).toContain('/atc delete');
+    expect(help.text).toContain('/atc list');
+    expect(help.text).toContain('/atc config');
+    expect(help.text).toContain('/atc status');
+    expect(help.text).toContain('/atc models');
+    expect(help.text).toContain('/atc sessions');
+    expect(help.text).toContain('/atc join');
+    expect(help.text).toContain('/atc help');
   });
 
   it('mentions picker behavior', () => {
@@ -41,17 +41,17 @@ describe('formatProjectHelp', () => {
   });
 
   it('lists all project commands', () => {
-    expect(help.text).toContain('/wm status');
-    expect(help.text).toContain('/wm abort');
-    expect(help.text).toContain('/wm sessions');
-    expect(help.text).toContain('/wm join');
-    expect(help.text).toContain('/wm leave');
-    expect(help.text).toContain('/wm history');
-    expect(help.text).toContain('/wm diff');
-    expect(help.text).toContain('/wm model');
-    expect(help.text).toContain('/wm agent');
-    expect(help.text).toContain('/wm mode');
-    expect(help.text).toContain('/wm help');
+    expect(help.text).toContain('/atc status');
+    expect(help.text).toContain('/atc abort');
+    expect(help.text).toContain('/atc sessions');
+    expect(help.text).toContain('/atc join');
+    expect(help.text).toContain('/atc leave');
+    expect(help.text).toContain('/atc history');
+    expect(help.text).toContain('/atc diff');
+    expect(help.text).toContain('/atc model');
+    expect(help.text).toContain('/atc agent');
+    expect(help.text).toContain('/atc mode');
+    expect(help.text).toContain('/atc help');
   });
 
   it('mentions picker behavior', () => {
