@@ -110,6 +110,7 @@ export class AgentSession {
   private buildSessionConfig(model?: string) {
     const effectiveModel = model ?? this.project.model;
     return {
+      sessionId: `atc-${this.project.name}`,
       model: effectiveModel,
       systemMessage: { mode: 'append' as const, content: buildSystemPreamble(this.project) },
       streaming: true,
