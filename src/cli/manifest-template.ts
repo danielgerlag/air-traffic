@@ -1,5 +1,5 @@
 export function generateManifest(machineName: string): string {
-  const displayName = `Air Traffic — ${machineName.charAt(0).toUpperCase() + machineName.slice(1)}`;
+  const displayName = `ATC ${machineName.charAt(0).toUpperCase() + machineName.slice(1)}`;
 
   return `display_information:
   name: "${displayName}"
@@ -7,7 +7,7 @@ export function generateManifest(machineName: string): string {
   background_color: "#1a1a2e"
   long_description: |
     Air Traffic lets you orchestrate GitHub Copilot CLI agents on your machines
-    remotely from Slack — including from your phone. Create per-project channels,
+    remotely from Slack, including from your phone. Create per-project channels,
     send prompts, approve tool executions, and manage sessions.
 
 features:

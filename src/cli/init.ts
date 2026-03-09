@@ -38,7 +38,7 @@ export async function runInit(): Promise<void> {
 
   console.log('\n  Now create an App-Level Token:');
   console.log('  Basic Information → App-Level Tokens → Generate Token');
-  console.log('  Name: "socket" — Scope: connections:write\n');
+  console.log('  Name: "socket" - Scope: connections:write\n');
 
   const appToken = (await prompt(rl, 'SLACK_APP_TOKEN (xapp-...): ')).trim();
 
@@ -56,7 +56,7 @@ export async function runInit(): Promise<void> {
   rl.close();
 
   const envContent = [
-    `# Air Traffic — ${machineName}`,
+    `# Air Traffic - ${machineName}`,
     `ATC_MACHINE_NAME=${machineName}`,
     `SLACK_BOT_TOKEN=${botToken}`,
     `SLACK_APP_TOKEN=${appToken}`,
