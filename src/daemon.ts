@@ -274,14 +274,45 @@ export class AirTrafficDaemon {
   private async cmdCreateProject(cmd: IncomingCommand): Promise<void> {
     let { args } = cmd;
     if (args.length === 0) {
-      const response = await this.adapter.askQuestion(cmd.channelId, cmd.threadId ?? cmd.channelId, {
+      // Step 1: Ask for project name
+      const nameResponse = await this.adapter.askQuestion(cmd.channelId, cmd.threadId ?? cmd.channelId, {
         question: '📦 What should the project be called?',
         allowFreeform: true,
       });
-      if (response.timedOut) return;
-      const answer = response.answer.trim();
-      if (!answer) return;
-      args = answer.split(/\s+/);
+      if (nameResponse.timedOut || !nameResponse.answer.trim()) return;
+      const name = nameResponse.answer.trim().split(/\s+/)[0];
+
+      // Step 2: Ask if they want to clone from a repo
+      const cloneResponse = await this.adapter.askQuestion(cmd.channelId, cmd.threadId ?? cmd.channelId, {
+        question: '🔗 Clone from a Git repo?',
+        choices: ['No, start empty', 'Yes, let me pick'],
+        allowFreeform: false,
+      });
+      if (cloneResponse.timedOut) return;
+
+      let repoUrl: string | undefined;
+      if (cloneResponse.answer.startsWith('Yes')) {
+        // Try to fetch repos from gh CLI
+        const repos = await this.fetchGitHubRepos();
+        if (repos.length > 0) {
+          const repoResponse = await this.adapter.askQuestion(cmd.channelId, cmd.threadId ?? cmd.channelId, {
+            question: '📂 Pick a repo or type a URL:',
+            choices: repos,
+            allowFreeform: true,
+          });
+          if (repoResponse.timedOut || !repoResponse.answer.trim()) return;
+          repoUrl = repoResponse.answer.trim();
+        } else {
+          const urlResponse = await this.adapter.askQuestion(cmd.channelId, cmd.threadId ?? cmd.channelId, {
+            question: '📂 Enter the repo URL:',
+            allowFreeform: true,
+          });
+          if (urlResponse.timedOut || !urlResponse.answer.trim()) return;
+          repoUrl = urlResponse.answer.trim();
+        }
+      }
+
+      args = repoUrl ? [name, '--from', repoUrl] : [name];
     }
 
     const name = args[0];
@@ -292,6 +323,19 @@ export class AirTrafficDaemon {
     await this.adapter.sendMessage(cmd.channelId, {
       text: `✅ Project "${project.name}" created on *${this.config.airTraffic.machineName}* → <#${project.channelId}>`,
     });
+  }
+
+  /** Fetch recent repos via gh CLI, returns empty array if unavailable. */
+  private async fetchGitHubRepos(): Promise<string[]> {
+    try {
+      const { execFile } = await import('child_process');
+      const { promisify } = await import('util');
+      const exec = promisify(execFile);
+      const { stdout } = await exec('gh', ['repo', 'list', '--limit', '20', '--json', 'nameWithOwner', '-q', '.[].nameWithOwner'], { timeout: 10_000 });
+      return stdout.trim().split('\n').filter(Boolean).map(r => `https://github.com/${r}`);
+    } catch {
+      return [];
+    }
   }
 
   private async cmdDeleteProject(cmd: IncomingCommand): Promise<void> {
