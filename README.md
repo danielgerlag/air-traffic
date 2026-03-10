@@ -137,6 +137,7 @@ It will:
 2. **OAuth & Permissions** → Scroll to **Scopes** → Add these **Bot Token Scopes**:
    - `channels:manage`, `channels:read`, `channels:history`, `channels:join`
    - `chat:write`, `chat:write.public`
+   - `files:read`, `files:write`
    - `reactions:read`, `reactions:write`
    - `groups:read`, `groups:history`, `groups:write`
    - `users:read`, `im:history`, `im:read`, `im:write`
@@ -147,6 +148,7 @@ It will:
    - `message.channels`
    - `message.groups`
    - `message.im`
+   - `app_home_opened`
 
 5. **Interactivity & Shortcuts** → **Enable Interactivity** (required for Block Kit button actions).
 
@@ -412,4 +414,4 @@ web/                           # React frontend (Vite + Tailwind)
 
 ## License
 
-ISC
+MIT
