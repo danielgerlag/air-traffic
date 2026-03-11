@@ -130,5 +130,7 @@ Air Traffic (category)
 ## Multi-Machine Setup
 
 1. Run `npx air-traffic init` on each machine — give each a unique name
-2. You can use a single Discord bot across machines (each machine uses the same `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` but different `ATC_MACHINE_NAME`)
-3. Channels are namespaced: `#atc-desktop-myapp`, `#atc-laptop-myapp`
+2. Each machine needs its **own Discord bot application** (just like Slack, each gets its own bot identity)
+3. Create a separate app at the [Developer Portal](https://discord.com/developers/applications) for each machine (e.g. "ATC Desktop", "ATC Laptop")
+4. All bots can be invited to the same Discord server — channels are namespaced (`#atc-desktop-myapp`, `#atc-laptop-myapp`)
+5. DM each bot to control that machine's projects
