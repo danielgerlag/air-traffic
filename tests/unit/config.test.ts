@@ -34,9 +34,9 @@ describe('loadConfig', () => {
     const { loadConfig } = await import('../../src/config.js');
     const config = loadConfig();
 
-    expect(config.slack.botToken).toBe('xoxb-test');
-    expect(config.slack.appToken).toBe('xapp-test');
-    expect(config.slack.signingSecret).toBe('secret');
+    expect(config.slack!.botToken).toBe('xoxb-test');
+    expect(config.slack!.appToken).toBe('xapp-test');
+    expect(config.slack!.signingSecret).toBe('secret');
     expect(config.airTraffic.machineName).toBe('desktop');
     expect(config.airTraffic.projectsDir).toBe('/tmp/projects');
     expect(config.airTraffic.dataDir).toBe('/tmp/data');
