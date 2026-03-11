@@ -503,13 +503,13 @@ export class SlackAdapter extends BaseMessagingAdapter {
 
         const isDm = msg.channel_type === 'im' || msg.channel.startsWith('D');
 
+        // Check for freeform replies to pending questions (works in both DMs and project channels)
+        if (this.handlePossibleQuestionReply(incoming)) {
+          return;
+        }
+
         if (isDm) {
           log.debug('Handling DM', { channel: msg.channel, text: msg.text?.slice(0, 50) });
-
-          // Check for thread replies to pending questions first
-          if (msg.thread_ts) {
-            this.handlePossibleQuestionReply(incoming);
-          }
 
           // Strip ! prefix in DMs — users will try !join, !status etc.
           if (incoming.text.startsWith('!')) {
@@ -712,14 +712,15 @@ export class SlackAdapter extends BaseMessagingAdapter {
     });
   }
 
-  private handlePossibleQuestionReply(msg: IncomingMessage): void {
+  private handlePossibleQuestionReply(msg: IncomingMessage): boolean {
     // Match freeform reply to a pending question from THIS machine in the same channel
     for (const [requestId, pending] of this.pendingQuestions) {
       if (pending.channelId === msg.channelId && requestId.includes(`_${this.machineName}_`)) {
         pending.resolver({ answer: msg.text, wasFreeform: true, timedOut: false });
-        return;
+        return true;
       }
     }
+    return false;
   }
 
   private async handleControlMessage(msg: IncomingMessage): Promise<void> {
