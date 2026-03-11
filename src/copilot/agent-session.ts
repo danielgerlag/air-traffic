@@ -19,6 +19,13 @@ const TOOL_OUTPUT_ARTIFACT_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.svg'
 /** Tools whose status we skip in the tool-call ticker (handled separately or too noisy). */
 const TOOL_STATUS_SKIP = new Set(['report_intent']);
 
+/** Tools that represent decisions/actions the user might want to interrupt. */
+const ACTIVITY_TOOLS = new Set([
+  'edit', 'edit_file', 'create', 'create_file',
+  'bash', 'shell', 'powershell',
+  'git_commit', 'git_push',
+]);
+
 /** Human-friendly labels for tool calls shown in the assistant loading messages. */
 const TOOL_FRIENDLY_LABELS: Record<string, string> = {
   grep: '🔍 Searching the codebase',
@@ -97,6 +104,11 @@ export class AgentSession {
   private currentIntent: string = '';
   private toolCallLog: Array<{ name: string; label: string; done: boolean }> = [];
   private readonly DELTA_FLUSH_INTERVAL = 2000; // 2 seconds
+  private activityLog: string[] = [];
+  private accumulatedActivity: string[] = [];
+  private activityMessageRef: MessageRef | null = null;
+  private activityFlushTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly ACTIVITY_FLUSH_INTERVAL = 3000; // 3 seconds
 
   /** EventEmitter for Console / Socket.IO observation of session events. */
   public readonly events: EventEmitter = new EventEmitter();
@@ -186,6 +198,7 @@ export class AgentSession {
             if (intent && this.currentThreadId) {
               this.currentIntent = intent;
               this.events.emit('intent', { intent });
+              this.pushActivity(`💭 _${intent}_`);
               this.updateAssistantStatus();
               this.setChannelTopic(`⚙️ ${intent}`);
             }
@@ -198,6 +211,7 @@ export class AgentSession {
             const description = (args.description ?? args.prompt ?? 'sub-agent') as string;
             this.activeSubAgent = description;
             this.events.emit('subagent', { status: 'start', description });
+            this.pushActivity(`🤖 Sub-agent: _${description}_`);
             this.updateAssistantStatus();
           }
 
@@ -211,6 +225,13 @@ export class AgentSession {
             }
             this.events.emit('tool', { status: 'running', toolName, label });
             this.updateAssistantStatus();
+
+            // Post action tools to the activity log so the user can see decisions
+            if (ACTIVITY_TOOLS.has(toolName)) {
+              const friendly = TOOL_FRIENDLY_LABELS[toolName] ?? `⚙️ ${toolName}`;
+              const detail = label ? ` — ${label}` : '';
+              this.pushActivity(`${friendly}${detail}`);
+            }
           }
 
           // Detect plan file writes for auto-upload
@@ -469,6 +490,8 @@ export class AgentSession {
       this.flushDeltaBuffer()
         .then(async () => {
           this.stopDeltaFlush();
+          await this.flushActivityLog();
+          this.stopActivityFlush();
           this.events.emit('idle');
 
           // Upload plan file if one was written during this task
@@ -511,6 +534,9 @@ export class AgentSession {
     this.deltaBuffer = '';
     this.accumulatedContent = '';
     this.lastDeltaMessageRef = null;
+    this.activityLog = [];
+    this.accumulatedActivity = [];
+    this.activityMessageRef = null;
     this.currentIntent = '';
     this.toolCallLog = [];
 
@@ -528,12 +554,14 @@ export class AgentSession {
     if (this.session) {
       await this.session.abort();
       this.stopDeltaFlush();
+      this.stopActivityFlush();
       this.idle = true;
     }
   }
 
   async disconnect(): Promise<void> {
     this.stopDeltaFlush();
+    this.stopActivityFlush();
     if (this.session) {
       await this.session.disconnect();
       this.session = null;
@@ -656,6 +684,65 @@ export class AgentSession {
       if (!this.idle) this.updateAssistantStatus();
     } catch (err) {
       getLogger().error('Failed to flush delta buffer', { error: err });
+    }
+  }
+
+  // --- Activity log (intent, sub-agent & action tool events posted to thread as context blocks) ---
+
+  private pushActivity(entry: string): void {
+    this.activityLog.push(entry);
+    this.scheduleActivityFlush();
+  }
+
+  private scheduleActivityFlush(): void {
+    if (this.activityFlushTimer) return;
+    this.activityFlushTimer = setInterval(() => {
+      this.flushActivityLog().catch((err) => {
+        getLogger().error('Activity flush error', { error: err });
+        this.stopActivityFlush();
+      });
+    }, this.ACTIVITY_FLUSH_INTERVAL);
+  }
+
+  private stopActivityFlush(): void {
+    if (this.activityFlushTimer) {
+      clearInterval(this.activityFlushTimer);
+      this.activityFlushTimer = null;
+    }
+  }
+
+  private async flushActivityLog(): Promise<void> {
+    if (this.activityLog.length === 0 || !this.currentThreadId) return;
+
+    this.accumulatedActivity.push(...this.activityLog);
+    this.activityLog = [];
+
+    // Build context blocks — each entry as a mrkdwn element in a context block
+    const blocks = this.accumulatedActivity.map((entry) => ({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: entry }],
+    }));
+
+    // Slack limits messages to 50 blocks; keep the most recent if exceeded
+    const MAX_BLOCKS = 50;
+    const trimmedBlocks = blocks.length > MAX_BLOCKS ? blocks.slice(-MAX_BLOCKS) : blocks;
+    const fallbackText = this.accumulatedActivity.join('\n');
+
+    try {
+      if (this.activityMessageRef) {
+        await this.messaging.updateMessage(this.activityMessageRef, {
+          text: fallbackText,
+          blocks: trimmedBlocks,
+        });
+      } else {
+        this.activityMessageRef = await this.messaging.sendThreadReply(
+          this.project.channelId,
+          this.currentThreadId,
+          { text: fallbackText, blocks: trimmedBlocks },
+        );
+      }
+    } catch (err) {
+      getLogger().error('Failed to flush activity log', { error: err });
     }
   }
 
