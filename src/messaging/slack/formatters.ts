@@ -324,6 +324,47 @@ export function formatError(message: string): MessageContent {
   };
 }
 
+export interface ProjectStatusCardInfo {
+  projectName: string;
+  model: string;
+  agent?: string;
+  mode?: string;
+  branch?: string;
+}
+
+export function formatProjectStatusCard(info: ProjectStatusCardInfo): MessageContent {
+  const lines: string[] = [];
+  if (info.branch) lines.push(`🔀 *Branch:* \`${info.branch}\``);
+  lines.push(`🤖 *Model:* \`${info.model}\``);
+  if (info.agent) lines.push(`🧑‍💻 *Agent:* \`${info.agent}\``);
+  if (info.mode) lines.push(`🚦 *Mode:* \`${info.mode}\``);
+
+  const text = lines.join('\n');
+  const blocks: unknown[] = [
+    { type: 'section', text: { type: 'mrkdwn', text } },
+  ];
+
+  const branchButtons: unknown[] = [];
+  if (info.branch) {
+    branchButtons.push(
+      { type: 'button', text: { type: 'plain_text', text: '🔀 Switch Branch', emoji: true }, action_id: 'project_card_switch_branch', value: info.projectName },
+      { type: 'button', text: { type: 'plain_text', text: '🌿 New Branch', emoji: true }, action_id: 'project_card_new_branch', value: info.projectName },
+    );
+  }
+
+  const settingButtons: unknown[] = [
+    { type: 'button', text: { type: 'plain_text', text: '🤖 Change Model', emoji: true }, action_id: 'project_card_change_model', value: info.projectName },
+    { type: 'button', text: { type: 'plain_text', text: '🚦 Change Mode', emoji: true }, action_id: 'project_card_change_mode', value: info.projectName },
+  ];
+
+  if (branchButtons.length > 0) {
+    blocks.push({ type: 'actions', elements: branchButtons });
+  }
+  blocks.push({ type: 'actions', elements: settingButtons });
+
+  return { text, blocks };
+}
+
 export function formatDiff(diff: string): MessageContent {
   const truncated = diff.length > 2900 ? diff.slice(0, 2900) + '\n… (truncated)' : diff;
   const text = `📝 *Diff*\n\`\`\`\n${truncated}\n\`\`\``;

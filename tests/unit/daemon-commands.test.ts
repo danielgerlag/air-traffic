@@ -340,9 +340,10 @@ describe('Command routing in control channel', () => {
 
   it('create command works from control channel', async () => {
     await adapter.simulateIncomingCommand(makeCommand('create', ['route-test']));
-    const msg = adapter.getLastMessage();
-    expect(msg!.content.text).toMatch(/✅/);
-    expect(msg!.content.text).toMatch(/route-test/);
+    const messages = adapter.getMessagesForChannel('C-control');
+    const createMsg = messages.find(m => m.content.text.includes('✅'));
+    expect(createMsg).toBeDefined();
+    expect(createMsg!.content.text).toMatch(/route-test/);
   });
 
   it('list command works from control channel', async () => {

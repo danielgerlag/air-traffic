@@ -197,7 +197,7 @@ describe('Hardening', () => {
         messageId: 'msg-2',
       });
 
-      const successMsg = adapter.getLastMessage();
+      const successMsg = adapter.getMessagesForChannel('C-control').pop();
       expect(successMsg!.content.text).toMatch(/good-project/);
       expect(successMsg!.content.text).toMatch(/✅/);
     });
@@ -272,7 +272,7 @@ describe('Hardening', () => {
         messageId: 'msg-1',
       });
 
-      const createMsg = adapter.getLastMessage();
+      const createMsg = adapter.getMessagesForChannel('C-control').pop();
       expect(createMsg!.content.text).toMatch(/✅/);
 
       // Delete the project
@@ -304,7 +304,7 @@ describe('Hardening', () => {
         userId: 'U-1',
         messageId: 'msg-1',
       });
-      expect(adapter.getLastMessage()!.content.text).toMatch(/✅/);
+      expect(adapter.getMessagesForChannel('C-control').pop()!.content.text).toMatch(/✅/);
 
       // Delete
       await adapter.simulateIncomingCommand({
@@ -316,7 +316,7 @@ describe('Hardening', () => {
         userId: 'U-1',
         messageId: 'msg-2',
       });
-      expect(adapter.getLastMessage()!.content.text).toMatch(/deleted/i);
+      expect(adapter.getMessagesForChannel('C-control').pop()!.content.text).toMatch(/deleted/i);
 
       // Re-create
       await adapter.simulateIncomingCommand({
@@ -328,7 +328,7 @@ describe('Hardening', () => {
         userId: 'U-1',
         messageId: 'msg-3',
       });
-      expect(adapter.getLastMessage()!.content.text).toMatch(/✅/);
+      expect(adapter.getMessagesForChannel('C-control').pop()!.content.text).toMatch(/✅/);
     });
   });
 });

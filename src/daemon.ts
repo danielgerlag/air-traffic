@@ -10,7 +10,7 @@ import { ModelRegistry } from './copilot/model-registry.js';
 import { PresenceManager } from './messaging/slack/presence.js';
 import { extractProjectName } from './messaging/slack/commands.js';
 import { parseProjectChannelMessage } from './messaging/slack/commands.js';
-import { formatControlHelp, formatMachineStatus, formatMenu, formatProjectHelp } from './messaging/slack/formatters.js';
+import { formatControlHelp, formatMachineStatus, formatMenu, formatProjectHelp, formatProjectStatusCard } from './messaging/slack/formatters.js';
 import { MODE_DESCRIPTIONS } from './projects/types.js';
 import type { CopilotMode } from './projects/types.js';
 import { WebServer } from './web/server.js';
@@ -260,6 +260,12 @@ export class AirTrafficDaemon {
         case 'help':
           await this.adapter.sendMessage(msg.channelId, formatProjectHelp(projectName));
           break;
+        case 'switch_branch':
+          await this.cmdSwitchBranch(projectName, args, msg);
+          break;
+        case 'new_branch':
+          await this.cmdNewBranch(projectName, msg);
+          break;
         default:
           log.warn(`Unknown project command: !${command}`);
       }
@@ -323,6 +329,7 @@ export class AirTrafficDaemon {
     await this.adapter.sendMessage(cmd.channelId, {
       text: `✅ Project "${project.name}" created on *${this.config.airTraffic.machineName}* → <#${project.channelId}>`,
     });
+    await this.sendProjectStatusCard(project);
   }
 
   /** Fetch recent repos via gh CLI, returns empty array if unavailable. */
@@ -335,6 +342,34 @@ export class AirTrafficDaemon {
       return stdout.trim().split('\n').filter(Boolean).map(r => `https://github.com/${r}`);
     } catch {
       return [];
+    }
+  }
+
+  /** Get the current git branch for a project path, or undefined if not a git repo. */
+  private async getGitBranch(projectPath: string): Promise<string | undefined> {
+    try {
+      const git = simpleGit(projectPath);
+      const branch = await git.revparse(['--abbrev-ref', 'HEAD']);
+      return branch.trim() || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Send a project status card to the project channel. */
+  private async sendProjectStatusCard(project: import('./projects/types.js').ProjectConfig): Promise<void> {
+    try {
+      const branch = await this.getGitBranch(project.path);
+      const card = formatProjectStatusCard({
+        projectName: project.name,
+        model: project.model,
+        agent: project.agent,
+        mode: project.mode ?? 'normal',
+        branch,
+      });
+      await this.adapter.sendMessage(project.channelId, card);
+    } catch (err) {
+      getLogger().warn('Failed to send project status card', { error: err });
     }
   }
 
@@ -550,6 +585,47 @@ export class AirTrafficDaemon {
     const diff = await git.diff();
     const text = diff.trim() || 'No changes.';
     await this.adapter.sendMessage(msg.channelId, { text: `\`\`\`\n${text}\n\`\`\`` });
+  }
+
+  private async cmdSwitchBranch(projectName: string, args: string[], msg: IncomingMessage): Promise<void> {
+    const project = await this.projectManager.getProject(projectName);
+    const git = simpleGit(project.path);
+
+    let branchName = args[0];
+    if (!branchName) {
+      const summary = await git.branch();
+      const branches = summary.all.filter(b => !b.startsWith('remotes/'));
+      if (branches.length === 0) {
+        await this.adapter.sendMessage(msg.channelId, { text: '❌ No branches found.' });
+        return;
+      }
+      const choices = branches.map(b => b === summary.current ? `${b} (current)` : b);
+      const resp = await this.adapter.askQuestion(msg.channelId, msg.threadId ?? msg.channelId, {
+        question: '🔀 Which branch?',
+        choices,
+        allowFreeform: true,
+      });
+      if (resp.timedOut || !resp.answer.trim()) return;
+      branchName = resp.answer.replace(/\s*\(current\)$/, '').trim();
+    }
+
+    await git.checkout(branchName);
+    await this.adapter.sendMessage(msg.channelId, { text: `✅ Switched to branch \`${branchName}\`` });
+  }
+
+  private async cmdNewBranch(projectName: string, msg: IncomingMessage): Promise<void> {
+    const project = await this.projectManager.getProject(projectName);
+    const git = simpleGit(project.path);
+
+    const resp = await this.adapter.askQuestion(msg.channelId, msg.threadId ?? msg.channelId, {
+      question: '🌿 Name for the new branch:',
+      allowFreeform: true,
+    });
+    if (resp.timedOut || !resp.answer.trim()) return;
+    const branchName = resp.answer.trim();
+
+    await git.checkoutLocalBranch(branchName);
+    await this.adapter.sendMessage(msg.channelId, { text: `✅ Created and switched to branch \`${branchName}\`` });
   }
 
   private async cmdSetAgent(projectName: string, args: string[], msg: IncomingMessage): Promise<void> {
@@ -798,6 +874,7 @@ export class AirTrafficDaemon {
     await this.adapter.sendMessage(projectChannelId, {
       text: `✅ Joined session ${sessionLabel}\n\n${summary}`,
     });
+    await this.sendProjectStatusCard(project);
 
     // If invoked from a different channel (e.g. control), post a link there
     if (msg.channelId !== projectChannelId) {

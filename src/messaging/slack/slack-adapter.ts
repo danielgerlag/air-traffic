@@ -651,6 +651,39 @@ export class SlackAdapter extends BaseMessagingAdapter {
       await this.dispatchCommand(cmd);
     });
 
+    // Handle project status card button actions
+    this.app.action(/^project_card_/, async ({ action, ack, body }) => {
+      await ack();
+      const act = action as { action_id?: string; value?: string };
+      if (!act.action_id || !act.value) return;
+
+      const msgBody = body as { channel?: { id?: string }; user?: { id?: string }; message?: { ts?: string } };
+      const channelId = msgBody.channel?.id;
+      const userId = msgBody.user?.id;
+      if (!channelId || !userId) return;
+
+      // Map button action_ids to project-channel commands
+      const actionMap: Record<string, string> = {
+        project_card_change_model: 'model',
+        project_card_change_mode: 'mode',
+        project_card_switch_branch: 'switch_branch',
+        project_card_new_branch: 'new_branch',
+      };
+      const command = actionMap[act.action_id];
+      if (!command) return;
+
+      const cmd: IncomingCommand = {
+        command,
+        args: [],
+        rawText: command,
+        channelId,
+        channelName: '',
+        userId,
+        messageId: msgBody.message?.ts ?? '',
+      };
+      await this.dispatchCommand(cmd);
+    });
+
     // Send welcome + menu when user first opens the Messages tab
     this.app.event('app_home_opened', async ({ event }) => {
       const log = getLogger();
