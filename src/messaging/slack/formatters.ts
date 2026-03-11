@@ -354,6 +354,7 @@ export function formatProjectStatusCard(info: ProjectStatusCardInfo): MessageCon
 
   const settingButtons: unknown[] = [
     { type: 'button', text: { type: 'plain_text', text: '🤖 Change Model', emoji: true }, action_id: 'project_card_change_model', value: info.projectName },
+    { type: 'button', text: { type: 'plain_text', text: '🧑‍💻 Change Agent', emoji: true }, action_id: 'project_card_change_agent', value: info.projectName },
     { type: 'button', text: { type: 'plain_text', text: '🚦 Change Mode', emoji: true }, action_id: 'project_card_change_mode', value: info.projectName },
   ];
 

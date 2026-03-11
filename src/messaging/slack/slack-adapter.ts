@@ -666,18 +666,21 @@ export class SlackAdapter extends BaseMessagingAdapter {
       const actionMap: Record<string, string> = {
         project_card_change_model: 'model',
         project_card_change_mode: 'mode',
+        project_card_change_agent: 'agent',
         project_card_switch_branch: 'switch_branch',
         project_card_new_branch: 'new_branch',
       };
       const command = actionMap[act.action_id];
       if (!command) return;
 
+      // The button value carries the project name — construct channel name so routing works
+      const channelName = this.projectChannelName(this.machineName, act.value);
       const cmd: IncomingCommand = {
         command,
         args: [],
-        rawText: command,
+        rawText: `!${command}`,
         channelId,
-        channelName: '',
+        channelName,
         userId,
         messageId: msgBody.message?.ts ?? '',
       };
