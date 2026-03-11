@@ -65,6 +65,7 @@ export interface SlackAdapterConfig {
   appToken: string;
   signingSecret: string;
   machineName: string;
+  version?: string;
   permissionTimeoutMs?: number;
   questionTimeoutMs?: number;
 }
@@ -132,7 +133,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
       const im = (result.channels ?? []).find((c) => c.id && !c.is_archived);
       if (!im?.id) return;
       this.seenDmUsers.add(im.user ?? '');
-      await this.sendMessage(im.id, formatWelcome(this.machineName));
+      await this.sendMessage(im.id, formatWelcome(this.machineName, this.config.version));
       log.info('Sent startup welcome to app DM');
     } catch (err) {
       log.warn('Failed to send startup welcome', { error: err });
@@ -522,7 +523,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
             const firstWord = incoming.text.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
             const isCommand = parseControlChannelMessage(incoming.text) !== null || classifyIntent(incoming.text) !== null;
             if (!isCommand) {
-              await this.sendMessage(msg.channel, formatWelcome(this.machineName));
+              await this.sendMessage(msg.channel, formatWelcome(this.machineName, this.config.version));
               await this.sendMessage(msg.channel, formatMenu(this.machineName));
             }
           }
@@ -704,7 +705,7 @@ export class SlackAdapter extends BaseMessagingAdapter {
         if (!channelId) return;
 
         log.debug('App home opened (messages tab)', { user: event.user, channel: channelId });
-        await this.sendMessage(channelId, formatWelcome(this.machineName));
+        await this.sendMessage(channelId, formatWelcome(this.machineName, this.config.version));
         await this.sendMessage(channelId, formatMenu(this.machineName));
       } catch (err) {
         log.error('Error handling app_home_opened', { error: err });

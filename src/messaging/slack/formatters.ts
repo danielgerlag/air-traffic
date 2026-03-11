@@ -292,9 +292,10 @@ export function formatMenu(machineName: string): MessageContent {
   };
 }
 
-export function formatWelcome(machineName: string): MessageContent {
+export function formatWelcome(machineName: string, version?: string): MessageContent {
+  const versionTag = version ? ` (v${version})` : '';
   const text = [
-    `🛫 *Welcome to Air Traffic — ${machineName}!*`,
+    `🛫 *Welcome to Air Traffic — ${machineName}!*${versionTag}`,
     '',
     'I orchestrate GitHub Copilot on this machine. You can:',
     '• Type commands directly: `create my-app`, `status`, `list`',

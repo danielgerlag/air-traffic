@@ -25,6 +25,7 @@ const adapter = new SlackAdapter({
   appToken: config.slack.appToken,
   signingSecret: config.slack.signingSecret,
   machineName: config.airTraffic.machineName,
+  version: pkg.version,
 });
 
 const daemon = new AirTrafficDaemon(config, adapter);
