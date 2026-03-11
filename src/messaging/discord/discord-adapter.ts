@@ -299,10 +299,17 @@ export class DiscordAdapter extends BaseMessagingAdapter {
   // ─── File uploads ──────────────────────────────────────────────────
 
   async sendFile(channelId: string, filePath: string, filename: string, initialComment?: string, threadId?: string): Promise<void> {
-    const channel = threadId
-      ? await this.resolveThread(channelId, threadId)
-      : await this.resolveTextChannel(channelId);
-    await channel.send({
+    let target: TextChannel | ThreadChannel | DMChannel;
+    if (threadId && threadId !== channelId) {
+      try {
+        target = await this.resolveThread(channelId, threadId);
+      } catch {
+        target = await this.resolveTextChannel(channelId) as TextChannel | DMChannel;
+      }
+    } else {
+      target = await this.resolveTextChannel(channelId) as TextChannel | DMChannel;
+    }
+    await target.send({
       content: initialComment || undefined,
       files: [{ attachment: filePath, name: filename }],
     });
