@@ -391,13 +391,30 @@ export class AirTrafficDaemon {
       if (!name) return;
     }
 
+    const project = await this.projectManager.getProject(name);
+
+    // Ask whether to also delete the local directory
+    const dirResponse = await this.adapter.askQuestion(cmd.channelId, cmd.threadId ?? cmd.channelId, {
+      question: `📁 Also delete the local directory?\n\`${project.path}\``,
+      choices: ['No, keep files', 'Yes, delete directory'],
+      allowFreeform: false,
+    });
+    const deleteDir = dirResponse.answer.startsWith('Yes');
+
     const session = this.orchestrator.getSession(name);
     if (session) {
       await session.disconnect();
     }
     this.orchestrator.removeSession(name);
     await this.projectManager.deleteProject(name);
-    await this.adapter.sendMessage(cmd.channelId, { text: `✅ Project "${name}" deleted from *${this.config.airTraffic.machineName}*` });
+
+    if (deleteDir) {
+      const fs = await import('node:fs/promises');
+      await fs.rm(project.path, { recursive: true, force: true });
+    }
+
+    const suffix = deleteDir ? ' and local directory removed' : '';
+    await this.adapter.sendMessage(cmd.channelId, { text: `✅ Project "${name}" deleted from *${this.config.airTraffic.machineName}*${suffix}` });
   }
 
   private async cmdListProjects(cmd: IncomingCommand): Promise<void> {
