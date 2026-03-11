@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { CopilotClient, CopilotSession, approveAll } from '@github/copilot-sdk';
+import type { CustomAgentConfig } from '@github/copilot-sdk';
 import type { MessagingAdapter, MessageRef } from '../messaging/types.js';
 import type { ProjectConfig } from '../projects/types.js';
 import { MODE_PREFIXES } from '../projects/types.js';
@@ -106,8 +108,43 @@ export class AgentSession {
     private permissionManager: PermissionManager,
   ) {}
 
+  /** Load custom agents from .github/agents/*.md in the project directory. */
+  private async loadCustomAgents(): Promise<CustomAgentConfig[]> {
+    const agentsDir = path.join(this.project.path, '.github', 'agents');
+    try {
+      const files = await fs.readdir(agentsDir);
+      const agents: CustomAgentConfig[] = [];
+      for (const file of files) {
+        if (!file.endsWith('.md')) continue;
+        try {
+          const content = await fs.readFile(path.join(agentsDir, file), 'utf-8');
+          let name = file.replace(/\.md$/, '');
+          let description: string | undefined;
+          let prompt = content;
+
+          // Parse and strip YAML front matter
+          const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
+          if (fmMatch) {
+            const fm = fmMatch[1];
+            prompt = fmMatch[2];
+            const nameMatch = fm.match(/^name:\s*['"]?(.+?)['"]?\s*$/m);
+            const descMatch = fm.match(/^description:\s*['"]?(.+?)['"]?\s*$/m);
+            if (nameMatch) name = nameMatch[1];
+            if (descMatch) description = descMatch[1];
+          }
+          agents.push({ name, description, prompt });
+        } catch {
+          // Skip unreadable files
+        }
+      }
+      return agents;
+    } catch {
+      return [];
+    }
+  }
+
   /** Build the shared session config used for both new and resumed sessions. */
-  private buildSessionConfig(model?: string) {
+  private buildSessionConfig(model?: string, customAgents?: CustomAgentConfig[]) {
     const effectiveModel = model ?? this.project.model;
     return {
       sessionId: `atc-${this.project.name}`,
@@ -115,6 +152,7 @@ export class AgentSession {
       systemMessage: { mode: 'append' as const, content: buildSystemPreamble(this.project) },
       streaming: true,
       workingDirectory: this.project.path,
+      ...(customAgents && customAgents.length > 0 ? { customAgents } : {}),
       onPermissionRequest: approveAll,
       onUserInputRequest: async (request: { question: string; choices?: string[]; allowFreeform?: boolean }) => {
         if (!this.currentThreadId) {
@@ -357,7 +395,8 @@ export class AgentSession {
 
   async initialize(model?: string): Promise<void> {
     const logger = getLogger();
-    const config = this.buildSessionConfig(model);
+    const customAgents = await this.loadCustomAgents();
+    const config = this.buildSessionConfig(model, customAgents);
     this.session = await this.client.createSession(config);
     this.setupEventListeners();
     logger.info(`Session initialized for project ${this.project.name} with model ${config.model}`);
@@ -366,7 +405,8 @@ export class AgentSession {
   /** Resume an existing Copilot CLI session by ID. */
   async resumeExisting(sessionId: string, threadId: string, userId?: string): Promise<string> {
     const logger = getLogger();
-    const config = this.buildSessionConfig();
+    const customAgents = await this.loadCustomAgents();
+    const config = this.buildSessionConfig(undefined, customAgents);
     this.session = await this.client.resumeSession(sessionId, config);
     this.setupEventListeners();
     this.currentThreadId = threadId;
@@ -479,7 +519,9 @@ export class AgentSession {
     this.setChannelTopic('⚙️ Copilot working…');
 
     const modePrefix = MODE_PREFIXES[this.project.mode ?? 'normal'] ?? '';
-    await this.session!.send({ prompt: `${modePrefix}${prompt}` });
+    const agent = this.project.agent;
+    const agentPrefix = agent && agent !== 'copilot' ? `@${agent} ` : '';
+    await this.session!.send({ prompt: `${modePrefix}${agentPrefix}${prompt}` });
   }
 
   async abort(): Promise<void> {

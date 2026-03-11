@@ -728,7 +728,16 @@ export class AirTrafficDaemon {
       if (!agent) return;
     }
     await this.projectManager.updateProjectConfig(projectName, { agent });
-    await this.adapter.sendMessage(msg.channelId, { text: `✅ Agent set to \`${agent}\`` });
+
+    // Reinitialize session so the new agent takes effect
+    const existingSession = this.orchestrator.getSession(projectName);
+    if (existingSession) {
+      existingSession.updateProject({ agent });
+      await existingSession.disconnect();
+      this.orchestrator.removeSession(projectName);
+    }
+
+    await this.adapter.sendMessage(msg.channelId, { text: `✅ Agent set to \`${agent}\`. Session will use the new agent on next prompt.` });
   }
 
   private async cmdSetMode(projectName: string, args: string[], msg: IncomingMessage): Promise<void> {
