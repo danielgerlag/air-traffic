@@ -122,6 +122,9 @@ export class DiscordAdapter extends BaseMessagingAdapter {
   // Typing indicator intervals per thread
   private typingIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
+  // Status messages per thread (for updating with spinner + status text)
+  private statusMessages = new Map<string, string>(); // key → messageId
+
   private readonly config: DiscordAdapterConfig;
 
   constructor(config: DiscordAdapterConfig) {
@@ -320,7 +323,7 @@ export class DiscordAdapter extends BaseMessagingAdapter {
 
   // ─── Thread status ──────────────────────────────────────────────
 
-  async setThreadStatus(channelId: string, threadId: string, status: string, _loadingMessages?: string[]): Promise<void> {
+  async setThreadStatus(channelId: string, threadId: string, status: string, loadingMessages?: string[]): Promise<void> {
     const key = `${channelId}:${threadId}`;
 
     // Clear existing typing interval
@@ -330,14 +333,46 @@ export class DiscordAdapter extends BaseMessagingAdapter {
       this.typingIntervals.delete(key);
     }
 
-    if (!status) return; // Empty status = stop typing
+    if (!status) {
+      // Empty status = stop — delete the status message
+      const msgId = this.statusMessages.get(key);
+      if (msgId) {
+        this.statusMessages.delete(key);
+        try {
+          const channel = await this.resolveTextChannel(channelId);
+          const msg = await channel.messages.fetch(msgId);
+          await msg.delete();
+        } catch {
+          // Best-effort
+        }
+      }
+      return;
+    }
+
+    const spinner = this.config.spinnerEmoji ?? '⏳';
+    const detail = loadingMessages && loadingMessages.length > 0 ? `\n${loadingMessages[loadingMessages.length - 1]}` : '';
+    const text = `${spinner} ${status}${detail}`;
 
     try {
-      const channel = threadId
-        ? await this.resolveThread(channelId, threadId)
-        : await this.resolveTextChannel(channelId);
+      const channel = await this.resolveTextChannel(channelId);
 
-      // Send typing immediately and then every 9s
+      // Update existing status message or post a new one
+      const existingMsgId = this.statusMessages.get(key);
+      if (existingMsgId) {
+        try {
+          const msg = await channel.messages.fetch(existingMsgId);
+          await msg.edit(text);
+        } catch {
+          // Message was deleted — post a new one
+          const newMsg = await channel.send(text);
+          this.statusMessages.set(key, newMsg.id);
+        }
+      } else {
+        const newMsg = await channel.send(text);
+        this.statusMessages.set(key, newMsg.id);
+      }
+
+      // Also keep typing indicator going
       await channel.sendTyping();
       const interval = setInterval(async () => {
         try {
