@@ -326,7 +326,7 @@ export class DiscordAdapter extends BaseMessagingAdapter {
   async setThreadStatus(channelId: string, threadId: string, status: string, loadingMessages?: string[]): Promise<void> {
     const key = `${channelId}:${threadId}`;
 
-    // Clear existing typing interval
+    // Clear existing typing interval for this key
     const existing = this.typingIntervals.get(key);
     if (existing) {
       clearInterval(existing);
@@ -334,16 +334,25 @@ export class DiscordAdapter extends BaseMessagingAdapter {
     }
 
     if (!status) {
-      // Empty status = stop — delete the status message
-      const msgId = this.statusMessages.get(key);
-      if (msgId) {
-        this.statusMessages.delete(key);
-        try {
-          const channel = await this.resolveTextChannel(channelId);
-          const msg = await channel.messages.fetch(msgId);
-          await msg.delete();
-        } catch {
-          // Best-effort
+      // Also clear any intervals for this channelId (defensive)
+      for (const [k, interval] of this.typingIntervals) {
+        if (k.startsWith(`${channelId}:`)) {
+          clearInterval(interval);
+          this.typingIntervals.delete(k);
+        }
+      }
+
+      // Delete any status messages for this channel
+      for (const [k, msgId] of this.statusMessages) {
+        if (k.startsWith(`${channelId}:`)) {
+          this.statusMessages.delete(k);
+          try {
+            const channel = await this.resolveTextChannel(channelId);
+            const msg = await channel.messages.fetch(msgId);
+            await msg.delete();
+          } catch {
+            // Best-effort
+          }
         }
       }
       return;

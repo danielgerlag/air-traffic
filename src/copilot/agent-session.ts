@@ -419,7 +419,7 @@ export class AgentSession {
    * through recent tool activity.
    */
   private updateAssistantStatus(): void {
-    if (!this.currentThreadId) return;
+    if (this.idle || !this.currentThreadId) return;
 
     // Primary status line
     let status = 'is thinking…';
