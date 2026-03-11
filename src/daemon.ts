@@ -608,6 +608,12 @@ export class AirTrafficDaemon {
     const project = await this.projectManager.getProject(projectName);
     const git = simpleGit(project.path);
 
+    // Verify it's a git repo
+    if (!await git.checkIsRepo()) {
+      await this.adapter.sendMessage(msg.channelId, { text: '❌ This project is not a git repository.' });
+      return;
+    }
+
     let branchName = args[0];
     if (!branchName) {
       const summary = await git.branch();
@@ -634,6 +640,12 @@ export class AirTrafficDaemon {
     const project = await this.projectManager.getProject(projectName);
     const git = simpleGit(project.path);
 
+    // Verify it's a git repo
+    if (!await git.checkIsRepo()) {
+      await this.adapter.sendMessage(msg.channelId, { text: '❌ This project is not a git repository.' });
+      return;
+    }
+
     const resp = await this.adapter.askQuestion(msg.channelId, msg.threadId ?? msg.channelId, {
       question: '🌿 Name for the new branch:',
       allowFreeform: true,
@@ -645,14 +657,30 @@ export class AirTrafficDaemon {
     await this.adapter.sendMessage(msg.channelId, { text: `✅ Created and switched to branch \`${branchName}\`` });
   }
 
+  private static readonly KNOWN_AGENTS = [
+    'copilot — Default Copilot agent',
+    'explore — Fast codebase exploration (read-only)',
+    'code-review — Reviews code changes',
+    'task — Executes commands (builds, tests, lints)',
+    'general-purpose — Full-capability agent',
+  ];
+
   private async cmdSetAgent(projectName: string, args: string[], msg: IncomingMessage): Promise<void> {
     let agent = args.join(' ');
     if (!agent) {
+      const project = await this.projectManager.getProject(projectName);
+      const current = project.agent ?? 'copilot';
+      const choices = AirTrafficDaemon.KNOWN_AGENTS.map(a => {
+        const name = a.split(' — ')[0];
+        return name === current ? `${a} (current)` : a;
+      });
       const resp = await this.adapter.askQuestion(msg.channelId, msg.threadId ?? msg.channelId, {
-        question: `🧩 Enter the agent name for *${projectName}*:`,
+        question: `🧩 Pick an agent for *${projectName}*:`,
+        choices,
         allowFreeform: true,
       });
-      agent = resp.answer.trim();
+      if (resp.timedOut || !resp.answer.trim()) return;
+      agent = resp.answer.split(' — ')[0].replace(/\s*\(current\)$/, '').trim();
       if (!agent) return;
     }
     await this.projectManager.updateProjectConfig(projectName, { agent });
