@@ -209,10 +209,15 @@ export class DiscordAdapter extends BaseMessagingAdapter {
   }
 
   async sendThreadReply(channelId: string, threadId: string, content: MessageContent): Promise<MessageRef> {
-    const thread = await this.resolveThread(channelId, threadId);
-    const sendOptions = this.buildSendOptions(content);
-    const msg = await thread.send(sendOptions);
-    return { channelId, messageId: msg.id, threadId };
+    try {
+      const thread = await this.resolveThread(channelId, threadId);
+      const sendOptions = this.buildSendOptions(content);
+      const msg = await thread.send(sendOptions);
+      return { channelId, messageId: msg.id, threadId };
+    } catch {
+      // Thread resolution failed (e.g. DM context) — fall back to regular message
+      return this.sendMessage(channelId, content);
+    }
   }
 
   async updateMessage(ref: MessageRef, content: MessageContent): Promise<void> {
@@ -552,7 +557,8 @@ export class DiscordAdapter extends BaseMessagingAdapter {
   }
 
   private async sendToChannelOrThread(channelId: string, threadId: string | undefined, content: MessageContent): Promise<MessageRef> {
-    if (threadId) {
+    // In DMs, threadId is often set to channelId (no real threads) — send as regular message
+    if (threadId && threadId !== channelId) {
       return this.sendThreadReply(channelId, threadId, content);
     }
     return this.sendMessage(channelId, content);
