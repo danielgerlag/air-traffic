@@ -453,19 +453,17 @@ export class DiscordAdapter extends BaseMessagingAdapter {
   }
 
   private async resolveTextChannel(channelId: string): Promise<TextChannel | DMChannel> {
-    // Try guild channel first
+    // Try client-level fetch first — works for both DMs and guild channels
     try {
-      const channel = await this.requireGuild().channels.fetch(channelId);
-      if (channel && (channel.type === ChannelType.GuildText || channel.type === ChannelType.PublicThread || channel.type === ChannelType.PrivateThread)) {
-        return channel as TextChannel;
+      const channel = await this.client!.channels.fetch(channelId);
+      if (channel) {
+        if (channel.type === ChannelType.DM) return channel as DMChannel;
+        if (channel.type === ChannelType.GuildText || channel.type === ChannelType.PublicThread || channel.type === ChannelType.PrivateThread) {
+          return channel as TextChannel;
+        }
       }
     } catch {
-      // Fall through to DM
-    }
-    // Try DM channel
-    const dmChannel = await this.client!.channels.fetch(channelId);
-    if (dmChannel && dmChannel.type === ChannelType.DM) {
-      return dmChannel as DMChannel;
+      // Fall through
     }
     throw new Error(`Channel ${channelId} not found`);
   }
