@@ -108,6 +108,7 @@ export class AgentSession {
   private accumulatedActivity: string[] = [];
   private activityMessageRef: MessageRef | null = null;
   private activityFlushTimer: ReturnType<typeof setInterval> | null = null;
+  private activityMessageStale: boolean = false;
   private readonly ACTIVITY_FLUSH_INTERVAL = 3000; // 3 seconds
 
   /** EventEmitter for Console / Socket.IO observation of session events. */
@@ -302,6 +303,7 @@ export class AgentSession {
               await this.messaging.sendMessage(this.project.channelId, {
                 text: `🤖 *Sub-agent result* — _${description}_\n>>>${formatted}`,
               }).catch(() => {});
+              this.activityMessageStale = true;
               this.updateAssistantStatus();
             }
           }
@@ -558,6 +560,7 @@ export class AgentSession {
     this.activityLog = [];
     this.accumulatedActivity = [];
     this.activityMessageRef = null;
+    this.activityMessageStale = false;
     this.currentIntent = '';
     this.toolCallLog = [];
 
@@ -698,6 +701,7 @@ export class AgentSession {
           this.project.channelId,
           { text: formatted },
         );
+        this.activityMessageStale = true;
       }
       // Re-assert assistant status after sending — Slack auto-clears it on bot messages
       if (!this.idle) this.updateAssistantStatus();
@@ -732,6 +736,13 @@ export class AgentSession {
 
   private async flushActivityLog(): Promise<void> {
     if (this.activityLog.length === 0 || !this.currentThreadId) return;
+
+    // If another message was sent after the activity message, start a new one
+    if (this.activityMessageStale) {
+      this.activityMessageRef = null;
+      this.accumulatedActivity = [];
+      this.activityMessageStale = false;
+    }
 
     this.accumulatedActivity.push(...this.activityLog);
     this.activityLog = [];
