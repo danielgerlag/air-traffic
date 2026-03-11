@@ -203,28 +203,9 @@ export class AgentSession {
           const toolName = input.toolName;
           getLogger().debug(`onPreToolUse called: ${toolName}`, { args: input.toolArgs });
 
-          // Capture report_intent tool calls → update assistant status
+          // Allow report_intent through (intent is now handled via assistant.intent event)
           if (toolName === 'report_intent') {
-            const args = input.toolArgs as Record<string, unknown>;
-            const intent = (args.intent ?? '') as string;
-            if (intent && this.currentThreadId) {
-              this.currentIntent = intent;
-              this.events.emit('intent', { intent });
-              this.pushActivity(`💭 _${intent}_`);
-              this.updateAssistantStatus();
-              this.setChannelTopic(`⚙️ ${intent}`);
-            }
             return { permissionDecision: 'allow' as const };
-          }
-
-          // Track sub-agent (task tool) launches
-          if (toolName === 'task') {
-            const args = input.toolArgs as Record<string, unknown>;
-            const description = (args.description ?? args.prompt ?? 'sub-agent') as string;
-            this.activeSubAgent = description;
-            this.events.emit('subagent', { status: 'start', description });
-            this.pushActivity(`🤖 Sub-agent: _${description}_`);
-            this.updateAssistantStatus();
           }
 
           // Track tool calls for assistant status
@@ -311,21 +292,18 @@ export class AgentSession {
             }
           }
 
-          // Capture sub-agent (task tool) completion and post output
-          if (toolName === 'task' && this.activeSubAgent) {
+          // Post sub-agent (task tool) result text to Slack
+          if (toolName === 'task') {
             const result = input.toolResult?.textResultForLlm ?? '';
-            const description = this.activeSubAgent;
-            this.activeSubAgent = null;
+            const description = this.activeSubAgent ?? 'sub-agent';
             if (result && this.currentThreadId) {
               const preview = result.length > 3000 ? result.slice(0, 3000) + '\n…(truncated)' : result;
               const formatted = markdownToMrkdwn(preview);
               await this.messaging.sendMessage(this.project.channelId, {
                 text: `🤖 *Sub-agent result* — _${description}_\n>>>${formatted}`,
               }).catch(() => {});
-              // Re-assert status after sending
               this.updateAssistantStatus();
             }
-            this.events.emit('subagent', { status: 'done', description, output: result });
           }
 
           // Auto-upload file artifacts to the messaging channel
@@ -492,6 +470,35 @@ export class AgentSession {
     this.session.on('tool.execution_start', (event) => {
       const toolName = event.data?.toolName ?? 'unknown tool';
       this.events.emit('tool', { toolName, status: 'start' });
+    });
+
+    // Intent updates (fires for both main agent and sub-agents)
+    this.session.on('assistant.intent', (event) => {
+      const intent = event.data?.intent ?? '';
+      if (intent && this.currentThreadId) {
+        this.currentIntent = intent;
+        this.events.emit('intent', { intent });
+        this.pushActivity(`💭 _${intent}_`);
+        this.updateAssistantStatus();
+        this.setChannelTopic(`⚙️ ${intent}`);
+      }
+    });
+
+    // Sub-agent lifecycle events from the SDK
+    this.session.on('subagent.started', (event) => {
+      const name = event.data?.agentDisplayName ?? event.data?.agentName ?? 'sub-agent';
+      const desc = event.data?.agentDescription ?? '';
+      this.activeSubAgent = name;
+      this.events.emit('subagent', { status: 'start', description: name });
+      this.pushActivity(`🤖 Sub-agent: _${name}_${desc ? ` — ${desc}` : ''}`);
+      this.updateAssistantStatus();
+    });
+
+    this.session.on('subagent.completed', (event) => {
+      const name = event.data?.agentName ?? this.activeSubAgent ?? 'sub-agent';
+      this.activeSubAgent = null;
+      this.events.emit('subagent', { status: 'done', description: name });
+      this.updateAssistantStatus();
     });
 
     // Session idle (task complete)
