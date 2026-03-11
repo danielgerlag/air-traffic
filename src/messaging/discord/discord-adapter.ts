@@ -34,11 +34,13 @@ import type {
   PermissionDecision,
   MachineStatus,
 } from '../types.js';
+import type { Formatters } from '../types.js';
 import {
   parseControlChannelMessage,
   parseProjectChannelMessage,
   isProjectChannel,
 } from '../slack/commands.js';
+import * as discordFormatters from './formatters.js';
 import {
   formatControlHelp,
   formatProjectHelp,
@@ -48,7 +50,7 @@ import {
   formatWelcome,
 } from './formatters.js';
 import { classifyIntent } from '../intent.js';
-import { truncateForDiscord } from './markdown.js';
+import { truncateForDiscord, mrkdwnToDiscordMarkdown } from './markdown.js';
 import { getLogger } from '../../utils/logger.js';
 
 /** Levenshtein distance for command suggestions. */
@@ -94,6 +96,13 @@ const EMBED_COLOR = 0x1e90ff;
 
 export class DiscordAdapter extends BaseMessagingAdapter {
   readonly machineName: string;
+  readonly formatters: Formatters = discordFormatters;
+
+  formatMarkdown(md: string): string {
+    // Discord natively supports standard markdown — just pass through.
+    // If the input was Slack mrkdwn, convert it.
+    return md;
+  }
 
   private client: Client | null = null;
   private guild: Guild | null = null;

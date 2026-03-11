@@ -6,7 +6,7 @@
  * Discord-specific embed / component payloads that the adapter
  * interprets when sending.
  */
-import type { MessageContent, MachineStatus } from '../types.js';
+import type { MessageContent, MachineStatus, ProjectStatusCardInfo } from '../types.js';
 
 // ─── Shared ──────────────────────────────────────────────────────────
 
@@ -298,14 +298,6 @@ export function formatError(message: string): MessageContent {
       color: 0xff0000,
     }],
   };
-}
-
-export interface ProjectStatusCardInfo {
-  projectName: string;
-  model: string;
-  agent?: string;
-  mode?: string;
-  branch?: string;
 }
 
 export function formatProjectStatusCard(info: ProjectStatusCardInfo): MessageContent {

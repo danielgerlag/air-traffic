@@ -7,7 +7,6 @@ import type { MessagingAdapter, MessageRef } from '../messaging/types.js';
 import type { ProjectConfig } from '../projects/types.js';
 import { MODE_PREFIXES } from '../projects/types.js';
 import { PermissionManager } from './permission-manager.js';
-import { markdownToMrkdwn } from '../messaging/slack/mrkdwn.js';
 import { getLogger } from '../utils/logger.js';
 
 /** File patterns that trigger automatic upload to the messaging channel. */
@@ -300,7 +299,7 @@ export class AgentSession {
             const description = this.activeSubAgent ?? 'sub-agent';
             if (result && this.currentThreadId) {
               const preview = result.length > 3000 ? result.slice(0, 3000) + '\n…(truncated)' : result;
-              const formatted = markdownToMrkdwn(preview);
+              const formatted = this.messaging.formatMarkdown(preview);
               await this.messaging.sendMessage(this.project.channelId, {
                 text: `🤖 *Sub-agent result* — _${description}_\n>>>${formatted}`,
               }).catch(() => {});
@@ -748,7 +747,7 @@ export class AgentSession {
       this.accumulatedContent = this.accumulatedContent.slice(-MAX_MSG_LEN);
     }
 
-    const formatted = markdownToMrkdwn(this.accumulatedContent);
+    const formatted = this.messaging.formatMarkdown(this.accumulatedContent);
 
     try {
       if (this.lastDeltaMessageRef) {

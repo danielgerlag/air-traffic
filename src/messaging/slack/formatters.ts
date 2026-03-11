@@ -1,4 +1,4 @@
-import type { MessageContent, MachineStatus } from '../types.js';
+import type { MessageContent, MachineStatus, ProjectStatusCardInfo } from '../types.js';
 
 const STATUS_EMOJI: Record<string, string> = {
   running: '⏳',
@@ -323,14 +323,6 @@ export function formatError(message: string): MessageContent {
       },
     ],
   };
-}
-
-export interface ProjectStatusCardInfo {
-  projectName: string;
-  model: string;
-  agent?: string;
-  mode?: string;
-  branch?: string;
 }
 
 export function formatProjectStatusCard(info: ProjectStatusCardInfo): MessageContent {

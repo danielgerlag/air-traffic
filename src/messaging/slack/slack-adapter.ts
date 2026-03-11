@@ -6,6 +6,7 @@ import { Readable } from 'node:stream';
 import { BaseMessagingAdapter } from '../adapter.js';
 import type {
   ChannelInfo,
+  Formatters,
   MessageContent,
   MessageRef,
   IncomingMessage,
@@ -22,6 +23,7 @@ import {
   isProjectChannel,
   extractProjectName,
 } from './commands.js';
+import * as slackFormatters from './formatters.js';
 import {
   formatPermissionRequest,
   formatQuestion,
@@ -31,6 +33,7 @@ import {
   formatMenu,
   formatWelcome,
 } from './formatters.js';
+import { markdownToMrkdwn } from './mrkdwn.js';
 import { classifyIntent } from '../intent.js';
 import { getLogger } from '../../utils/logger.js';
 
@@ -74,6 +77,11 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 
 export class SlackAdapter extends BaseMessagingAdapter {
   readonly machineName: string;
+  readonly formatters: Formatters = slackFormatters;
+
+  formatMarkdown(md: string): string {
+    return markdownToMrkdwn(md);
+  }
 
   private app: App | null = null;
   private botUserId: string | null = null;

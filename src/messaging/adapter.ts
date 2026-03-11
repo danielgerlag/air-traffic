@@ -1,5 +1,6 @@
 import type {
   MessagingAdapter,
+  Formatters,
   ChannelInfo,
   MessageContent,
   MessageRef,
@@ -14,6 +15,8 @@ import type {
 
 export abstract class BaseMessagingAdapter implements MessagingAdapter {
   abstract readonly machineName: string;
+  abstract readonly formatters: Formatters;
+  abstract formatMarkdown(md: string): string;
 
   protected messageHandlers: MessageHandler[] = [];
   protected commandHandlers: CommandHandler[] = [];

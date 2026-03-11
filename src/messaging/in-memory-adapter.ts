@@ -1,6 +1,7 @@
 import { BaseMessagingAdapter } from './adapter.js';
 import type {
   ChannelInfo,
+  Formatters,
   MessageContent,
   MessageRef,
   QuestionRequest,
@@ -11,6 +12,8 @@ import type {
   IncomingMessage,
   IncomingCommand,
 } from './types.js';
+import * as slackFormatters from './slack/formatters.js';
+import { markdownToMrkdwn } from './slack/mrkdwn.js';
 
 interface SentMessage {
   channelId: string;
@@ -41,6 +44,11 @@ interface AskedPermission {
 
 export class InMemoryMessagingAdapter extends BaseMessagingAdapter {
   readonly machineName: string;
+  readonly formatters: Formatters = slackFormatters;
+
+  formatMarkdown(md: string): string {
+    return markdownToMrkdwn(md);
+  }
 
   // Recorded state for assertions
   readonly sentMessages: SentMessage[] = [];

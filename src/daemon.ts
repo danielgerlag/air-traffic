@@ -10,7 +10,6 @@ import { ModelRegistry } from './copilot/model-registry.js';
 import { PresenceManager } from './messaging/slack/presence.js';
 import { extractProjectName } from './messaging/slack/commands.js';
 import { parseProjectChannelMessage } from './messaging/slack/commands.js';
-import { formatControlHelp, formatMachineStatus, formatMenu, formatProjectHelp, formatProjectStatusCard } from './messaging/slack/formatters.js';
 import { MODE_DESCRIPTIONS } from './projects/types.js';
 import type { CopilotMode } from './projects/types.js';
 import { WebServer } from './web/server.js';
@@ -140,10 +139,10 @@ export class AirTrafficDaemon {
           await this.postAvailableModels(cmd.channelId);
           break;
         case 'help':
-          await this.adapter.sendMessage(cmd.channelId, formatControlHelp(this.config.airTraffic.machineName));
+          await this.adapter.sendMessage(cmd.channelId, this.adapter.formatters.formatControlHelp(this.config.airTraffic.machineName));
           break;
         case 'menu':
-          await this.adapter.sendMessage(cmd.channelId, formatMenu(this.config.airTraffic.machineName));
+          await this.adapter.sendMessage(cmd.channelId, this.adapter.formatters.formatMenu(this.config.airTraffic.machineName));
           break;
         case 'machines':
           await this.postMachineStatus(cmd.channelId);
@@ -258,7 +257,7 @@ export class AirTrafficDaemon {
           await this.cmdHistory(projectName, msg);
           break;
         case 'help':
-          await this.adapter.sendMessage(msg.channelId, formatProjectHelp(projectName));
+          await this.adapter.sendMessage(msg.channelId, this.adapter.formatters.formatProjectHelp(projectName));
           break;
         case 'switch_branch':
           await this.cmdSwitchBranch(projectName, args, msg);
@@ -360,7 +359,7 @@ export class AirTrafficDaemon {
   private async sendProjectStatusCard(project: import('./projects/types.js').ProjectConfig): Promise<void> {
     try {
       const branch = await this.getGitBranch(project.path);
-      const card = formatProjectStatusCard({
+      const card = this.adapter.formatters.formatProjectStatusCard({
         projectName: project.name,
         model: project.model,
         agent: project.agent,
@@ -1056,7 +1055,7 @@ export class AirTrafficDaemon {
       projects: this.orchestrator.getActiveProjectNames(),
       lastSeen: new Date(),
     };
-    const content = formatMachineStatus(this.config.airTraffic.machineName, status);
+    const content = this.adapter.formatters.formatMachineStatus(this.config.airTraffic.machineName, status);
     await this.adapter.sendMessage(channelId, content);
   }
 
