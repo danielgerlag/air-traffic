@@ -155,13 +155,25 @@ export class AgentSession {
     }
   }
 
+  /** Find the prompt for the currently selected agent, if it's a custom agent. */
+  private findActiveAgentPrompt(customAgents: CustomAgentConfig[]): string | undefined {
+    const agent = this.project.agent;
+    if (!agent || agent === 'copilot') return undefined;
+    const match = customAgents.find((a) => a.name === agent);
+    return match?.prompt;
+  }
+
   /** Build the shared session config used for both new and resumed sessions. */
-  private buildSessionConfig(model?: string, customAgents?: CustomAgentConfig[]) {
+  private buildSessionConfig(model?: string, customAgents?: CustomAgentConfig[], activeAgentPrompt?: string) {
     const effectiveModel = model ?? this.project.model;
+    let systemContent = buildSystemPreamble(this.project);
+    if (activeAgentPrompt) {
+      systemContent += `\n\n<active_agent>\n${activeAgentPrompt}\n</active_agent>`;
+    }
     return {
       sessionId: `atc-${this.project.name}`,
       model: effectiveModel,
-      systemMessage: { mode: 'append' as const, content: buildSystemPreamble(this.project) },
+      systemMessage: { mode: 'append' as const, content: systemContent },
       streaming: true,
       workingDirectory: this.project.path,
       ...(customAgents && customAgents.length > 0 ? { customAgents } : {}),
@@ -417,7 +429,8 @@ export class AgentSession {
   async initialize(model?: string): Promise<void> {
     const logger = getLogger();
     const customAgents = await this.loadCustomAgents();
-    const config = this.buildSessionConfig(model, customAgents);
+    const activeAgentPrompt = this.findActiveAgentPrompt(customAgents);
+    const config = this.buildSessionConfig(model, customAgents, activeAgentPrompt);
     this.session = await this.client.createSession(config);
     this.setupEventListeners();
     logger.info(`Session initialized for project ${this.project.name} with model ${config.model}`);
@@ -427,7 +440,8 @@ export class AgentSession {
   async resumeExisting(sessionId: string, threadId: string, userId?: string): Promise<string> {
     const logger = getLogger();
     const customAgents = await this.loadCustomAgents();
-    const config = this.buildSessionConfig(undefined, customAgents);
+    const activeAgentPrompt = this.findActiveAgentPrompt(customAgents);
+    const config = this.buildSessionConfig(undefined, customAgents, activeAgentPrompt);
     this.session = await this.client.resumeSession(sessionId, config);
     this.setupEventListeners();
     this.currentThreadId = threadId;
@@ -545,9 +559,7 @@ export class AgentSession {
     this.setChannelTopic('⚙️ Copilot working…');
 
     const modePrefix = MODE_PREFIXES[this.project.mode ?? 'normal'] ?? '';
-    const agent = this.project.agent;
-    const agentPrefix = agent && agent !== 'copilot' ? `@${agent} ` : '';
-    await this.session!.send({ prompt: `${modePrefix}${agentPrefix}${prompt}` });
+    await this.session!.send({ prompt: `${modePrefix}${prompt}` });
   }
 
   async abort(): Promise<void> {
