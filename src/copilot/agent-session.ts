@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { CopilotClient, CopilotSession, approveAll } from '@github/copilot-sdk';
-import type { CustomAgentConfig } from '@github/copilot-sdk';
+import type { CustomAgentConfig, Tool } from '@github/copilot-sdk';
 import type { MessagingAdapter, MessageRef } from '../messaging/types.js';
 import type { ProjectConfig } from '../projects/types.js';
 import { MODE_PREFIXES } from '../projects/types.js';
@@ -69,8 +69,8 @@ function buildSystemPreamble(project: ProjectConfig): string {
     '',
     'IMPORTANT behavioral rules for this remote context:',
     '• The user CANNOT open localhost URLs, local browsers, or view local files directly.',
-    '• When you take screenshots or generate images/files the user needs to see, ALWAYS save them',
-    `  to the working directory (${project.path}) with a clear filename. The bridge will auto-upload them.`,
+    '• When you take screenshots, generate reports, images, or any file the user needs to see,',
+    '  use the `upload_to_channel` tool to send it to the messaging channel.',
     '• When referencing files you created or modified, mention the file path so the user knows what changed.',
     '• Do NOT say "here\'s the screenshot" without saving the file — the user can\'t see your local screen.',
     '• Do NOT suggest the user open localhost URLs — they are remote. Instead, describe what you see or take a screenshot.',
@@ -177,6 +177,7 @@ export class AgentSession {
       systemMessage: { mode: 'append' as const, content: systemContent },
       streaming: true,
       workingDirectory: this.project.path,
+      tools: this.buildTools(),
       ...(customAgents && customAgents.length > 0 ? { customAgents } : {}),
       onPermissionRequest: approveAll,
       onUserInputRequest: async (request: { question: string; choices?: string[]; allowFreeform?: boolean }) => {
@@ -355,6 +356,62 @@ export class AgentSession {
         },
       },
     };
+  }
+
+  /** Build custom tools that bridge back into Air Traffic. */
+  private buildTools(): Tool[] {
+    return [
+      {
+        name: 'upload_to_channel',
+        description: 'Upload a file from the local filesystem to the messaging channel so the remote user can see it. Use this for screenshots, reports, diagrams, or any file the user needs to view. The file must exist under the project working directory.',
+        parameters: {
+          type: 'object',
+          properties: {
+            file_path: {
+              type: 'string',
+              description: 'Absolute or relative path to the file to upload',
+            },
+            comment: {
+              type: 'string',
+              description: 'Optional comment to include with the file upload',
+            },
+          },
+          required: ['file_path'],
+        },
+        handler: async (rawArgs: unknown) => {
+          const args = rawArgs as { file_path: string; comment?: string };
+          const filePath = args.file_path;
+          const resolvedPath = path.isAbsolute(filePath)
+            ? filePath
+            : path.resolve(this.project.path, filePath);
+
+          if (!resolvedPath.startsWith(this.project.path + path.sep) && resolvedPath !== this.project.path) {
+            return { resultType: 'failure' as const, textResultForLlm: `File must be under the project directory: ${this.project.path}` };
+          }
+
+          try {
+            await fs.access(resolvedPath);
+          } catch {
+            return { resultType: 'failure' as const, textResultForLlm: `File not found: ${resolvedPath}` };
+          }
+
+          if (!this.currentThreadId) {
+            return { resultType: 'failure' as const, textResultForLlm: 'No active thread to upload to' };
+          }
+
+          await this.messaging.sendFile(
+            this.project.channelId,
+            resolvedPath,
+            path.basename(resolvedPath),
+            args.comment ?? `📎 ${path.basename(resolvedPath)}`,
+            this.currentThreadId,
+          );
+          this.activityMessageStale = true;
+          getLogger().info(`Tool-uploaded file: ${resolvedPath}`);
+          return `File uploaded to channel: ${path.basename(resolvedPath)}`;
+        },
+      },
+    ];
   }
 
   /**
