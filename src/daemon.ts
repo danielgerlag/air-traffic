@@ -665,15 +665,59 @@ export class AirTrafficDaemon {
     'general-purpose — Full-capability agent',
   ];
 
+  /** Discover custom agents from .github/agents/*.md in the project directory. */
+  private async discoverProjectAgents(projectPath: string): Promise<Array<{ name: string; description: string }>> {
+    const fs = await import('node:fs/promises');
+    const agentsDir = path.join(projectPath, '.github', 'agents');
+    try {
+      const files = await fs.readdir(agentsDir);
+      const agents: Array<{ name: string; description: string }> = [];
+      for (const file of files) {
+        if (!file.endsWith('.md')) continue;
+        try {
+          const content = await fs.readFile(path.join(agentsDir, file), 'utf-8');
+          let name = file.replace(/\.md$/, '');
+          let description = '';
+
+          // Parse YAML front matter
+          const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+          if (fmMatch) {
+            const fm = fmMatch[1];
+            const nameMatch = fm.match(/^name:\s*['"]?(.+?)['"]?\s*$/m);
+            const descMatch = fm.match(/^description:\s*['"]?(.+?)['"]?\s*$/m);
+            if (nameMatch) name = nameMatch[1];
+            if (descMatch) description = descMatch[1];
+          }
+          agents.push({ name, description });
+        } catch {
+          // Skip unreadable files
+        }
+      }
+      return agents;
+    } catch {
+      return [];
+    }
+  }
+
   private async cmdSetAgent(projectName: string, args: string[], msg: IncomingMessage): Promise<void> {
     let agent = args.join(' ');
     if (!agent) {
       const project = await this.projectManager.getProject(projectName);
       const current = project.agent ?? 'copilot';
+
+      // Built-in agents
       const choices = AirTrafficDaemon.KNOWN_AGENTS.map(a => {
         const name = a.split(' — ')[0];
         return name === current ? `${a} (current)` : a;
       });
+
+      // Discover project-level custom agents
+      const projectAgents = await this.discoverProjectAgents(project.path);
+      for (const pa of projectAgents) {
+        const label = pa.description ? `${pa.name} — ${pa.description}` : pa.name;
+        choices.push(pa.name === current ? `${label} (current)` : label);
+      }
+
       const resp = await this.adapter.askQuestion(msg.channelId, msg.threadId ?? msg.channelId, {
         question: `🧩 Pick an agent for *${projectName}*:`,
         choices,
