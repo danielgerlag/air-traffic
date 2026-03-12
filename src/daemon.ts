@@ -1094,7 +1094,15 @@ export class AirTrafficDaemon {
 
   private async getOrCreateSession(projectName: string): Promise<AgentSession> {
     const existing = this.orchestrator.getSession(projectName);
-    if (existing) return existing;
+    if (existing) {
+      if (existing.isConnected()) return existing;
+
+      // Session exists but underlying CLI session is dead — clean up and recreate
+      getLogger().warn(`Session for "${projectName}" is disconnected, reattaching`);
+      try { await existing.disconnect(); } catch { /* best-effort */ }
+      this.orchestrator.removeSession(projectName);
+      if (this.sessionBridge) this.sessionBridge.unbridge(projectName);
+    }
 
     const project = await this.projectManager.getProject(projectName);
     const client = await this.orchestrator.ensureClient();

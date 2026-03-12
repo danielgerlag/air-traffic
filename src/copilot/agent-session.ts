@@ -625,7 +625,26 @@ export class AgentSession {
     this.setChannelTopic('⚙️ Copilot working…');
 
     const modePrefix = MODE_PREFIXES[this.project.mode ?? 'normal'] ?? '';
-    await this.session!.send({ prompt: `${modePrefix}${prompt}` });
+    try {
+      await this.session!.send({ prompt: `${modePrefix}${prompt}` });
+    } catch (err) {
+      const log = getLogger();
+      log.warn(`Session send failed for project ${this.project.name}, reinitializing`, { error: err });
+
+      // Tear down the broken session and create a fresh one
+      try { await this.session?.disconnect(); } catch { /* best-effort */ }
+      this.session = null;
+      await this.initialize();
+
+      await this.messaging.sendMessage(this.project.channelId, {
+        text: '🔄 Session was disconnected — reconnected automatically. Retrying your prompt…',
+      });
+
+      // Reset state for the retry
+      this.idle = false;
+      this.updateAssistantStatus();
+      await this.session!.send({ prompt: `${modePrefix}${prompt}` });
+    }
   }
 
   async abort(): Promise<void> {
@@ -649,6 +668,11 @@ export class AgentSession {
 
   isIdle(): boolean {
     return this.idle;
+  }
+
+  /** Whether the underlying Copilot CLI session is alive. */
+  isConnected(): boolean {
+    return this.session !== null;
   }
 
   /** Update the in-memory project config (e.g. after a web API PATCH). */
