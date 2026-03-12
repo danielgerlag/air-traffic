@@ -2,17 +2,24 @@
 
 <img src="assets/icon.svg" width="128" alt="Air Traffic icon" />
 
-> Remote GitHub Copilot orchestration via Slack — from your phone.
+> Remote GitHub Copilot orchestration via Slack or Discord — from your phone.
 
 ## Overview
 
-Air Traffic runs as a daemon on your development machine, watches Slack channels for commands and prompts, and bridges them to GitHub Copilot's agent SDK. You prompt Copilot from your phone (or any Slack client), and the agent executes tasks in your project directories — editing files, running shells, committing code — while streaming results back to Slack.
+Air Traffic runs as a daemon on your development machine, watches Slack or Discord channels for commands and prompts, and bridges them to GitHub Copilot's agent SDK. You prompt Copilot from your phone (or any messaging client), and the agent executes tasks in your project directories — editing files, running shells, committing code — while streaming results back.
 
 ## Features
 
 ### 🖥️ Multi-Machine Support
 
-Run Air Traffic on every machine you work with — desktop, laptop, cloud VM, CI box. Each machine gets its own Slack app (created via `npx air-traffic init`), so events are routed directly with zero cross-daemon coordination. DM each bot to manage that machine's projects. You manage your entire fleet from your phone.
+Run Air Traffic on every machine you work with — desktop, laptop, cloud VM, CI box. Each machine gets its own bot (created via `npx air-traffic init`), so events are routed directly with zero cross-daemon coordination. DM each bot to manage that machine's projects. You manage your entire fleet from your phone.
+
+### 🔌 Multi-Platform Support
+
+Air Traffic supports both **Slack** and **Discord** as messaging platforms. The core logic is platform-agnostic — all platform communication goes through the `MessagingAdapter` interface. See the platform-specific setup guides:
+
+- [Slack Setup Guide](docs/slack-setup.md)
+- [Discord Setup Guide](docs/discord-setup.md)
 
 ### 🔗 Session Sharing with Local Copilot CLI
 
@@ -97,64 +104,22 @@ The core logic is platform-agnostic. All platform communication goes through the
 - **Node.js 18+**
 - **GitHub Copilot CLI** installed and authenticated — verify with `copilot --version`
 - **Active GitHub Copilot subscription** (Individual, Business, or Enterprise)
-- **Slack workspace** with admin access to create apps
+- **Slack workspace** or **Discord server** with admin access
 
-## Slack App Setup
+## Platform Setup
 
-### Option A: Setup wizard (recommended)
+Choose your messaging platform:
 
-The `init` command walks you through creating a Slack app for your machine:
+- **Slack** → [docs/slack-setup.md](docs/slack-setup.md)
+- **Discord** → [docs/discord-setup.md](docs/discord-setup.md)
+
+### Quick Start
 
 ```bash
 npx air-traffic init
 ```
 
-It will:
-1. Ask for your machine name (e.g. `desktop`, `laptop`)
-2. Generate a customized Slack app manifest
-3. Guide you through creating the app at [api.slack.com/apps](https://api.slack.com/apps)
-4. Prompt you for the three required tokens
-5. Write a `.env` file with your configuration
-
-> **Multi-machine setup**: Run `npx air-traffic init` on each machine with a different machine name. Each machine gets its own Slack app — no conflicts, no routing issues.
-
-### Option B: From manifest (manual)
-
-1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From an app manifest**
-2. Select your workspace
-3. Paste the contents of [`slack-app-manifest.yaml`](./slack-app-manifest.yaml) from this repo
-4. Click **Create** — all scopes, events, and Socket Mode are configured automatically
-5. **Install to Workspace** → authorize the app
-6. Collect your tokens:
-   - **Basic Information** → **App Credentials** → copy **Signing Secret** → `SLACK_SIGNING_SECRET`
-   - **OAuth & Permissions** → copy **Bot User OAuth Token** → `SLACK_BOT_TOKEN` (starts with `xoxb-`)
-   - **Basic Information** → **App-Level Tokens** → generate one with `connections:write` scope → `SLACK_APP_TOKEN` (starts with `xapp-`)
-
-### Option C: Manual setup
-
-1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**. Give it a name (e.g. "Air Traffic") and select your workspace.
-
-2. **OAuth & Permissions** → Scroll to **Scopes** → Add these **Bot Token Scopes**:
-   - `channels:manage`, `channels:read`, `channels:history`, `channels:join`
-   - `chat:write`, `chat:write.public`
-   - `files:read`, `files:write`
-   - `reactions:read`, `reactions:write`
-   - `groups:read`, `groups:history`, `groups:write`
-   - `users:read`, `im:history`, `im:read`, `im:write`
-
-3. **Socket Mode** → **Enable Socket Mode** → Create an **App-Level Token** with the `connections:write` scope. Copy the token — this is your `SLACK_APP_TOKEN` (starts with `xapp-`).
-
-4. **Event Subscriptions** → **Enable Events** → Under **Subscribe to bot events**, add:
-   - `message.channels`
-   - `message.groups`
-   - `message.im`
-   - `app_home_opened`
-
-5. **Interactivity & Shortcuts** → **Enable Interactivity** (required for Block Kit button actions).
-
-6. **Install to Workspace** → Click **Install to Workspace** and authorize. Copy the **Bot User OAuth Token** — this is your `SLACK_BOT_TOKEN` (starts with `xoxb-`).
-
-7. **Basic Information** → Scroll to **App Credentials** → Copy the **Signing Secret** — this is your `SLACK_SIGNING_SECRET`.
+The setup wizard asks for your **platform** (Slack or Discord), machine name, and walks you through creating the bot and collecting tokens. It writes a `.env` file ready to go.
 
 ## Installation
 
@@ -209,9 +174,7 @@ npm run dev
 
 | Variable | Description | Default |
 |---|---|---|
-| `SLACK_BOT_TOKEN` | Bot User OAuth Token (`xoxb-...`) | *required* |
-| `SLACK_APP_TOKEN` | App-Level Token with `connections:write` (`xapp-...`) | *required* |
-| `SLACK_SIGNING_SECRET` | Slack app signing secret | *required* |
+| `ATC_PLATFORM` | Messaging platform: `slack` or `discord` | `slack` |
 | `ATC_MACHINE_NAME` | Unique name for this machine (e.g. `desktop`, `laptop`) | *required* |
 | `ATC_PROJECTS_DIR` | Directory where project working copies are created | `~/projects` |
 | `ATC_DATA_DIR` | Directory for project metadata and config storage | `~/.air-traffic/data` |
@@ -220,6 +183,22 @@ npm run dev
 | `ATC_WEB_PORT` | Port for the Air Traffic Console web UI | `8089` |
 | `ATC_PERMISSION_TIMEOUT_MS` | Timeout for permission prompts (ms) | `300000` |
 | `ATC_QUESTION_TIMEOUT_MS` | Timeout for agent questions (ms) | `300000` |
+
+**Slack-specific** (when `ATC_PLATFORM=slack`):
+
+| Variable | Description |
+|---|---|
+| `SLACK_BOT_TOKEN` | Bot User OAuth Token (`xoxb-...`) |
+| `SLACK_APP_TOKEN` | App-Level Token with `connections:write` (`xapp-...`) |
+| `SLACK_SIGNING_SECRET` | Slack app signing secret |
+
+**Discord-specific** (when `ATC_PLATFORM=discord`):
+
+| Variable | Description |
+|---|---|
+| `DISCORD_BOT_TOKEN` | Discord bot token |
+| `DISCORD_GUILD_ID` | Discord server (guild) ID |
+| `DISCORD_SPINNER_EMOJI` | Optional animated spinner emoji (e.g. `<a:loading:123>`) |
 
 ## Running
 
@@ -325,14 +304,15 @@ In project channels, regular messages are sent as prompts to Copilot. Use `!` pr
 
 ```
 ┌──────────────────────────────────────────────┐
-│                  Slack                        │
-│         (phone / desktop client)              │
-└──────────────┬───────────────────┬────────────┘
-               │  Socket Mode      │
-┌──────────────▼───────────────────▼────────────┐
-│           SlackAdapter                        │
-│    (implements MessagingAdapter)               │
-├───────────────────────────────────────────────┤
+│              Slack / Discord                 │
+│         (phone / desktop client)             │
+└──────────────┬───────────────────┬───────────┘
+               │  Socket Mode /    │
+               │  Gateway          │
+┌──────────────▼───────────────────▼───────────┐
+│     SlackAdapter / DiscordAdapter            │
+│    (implements MessagingAdapter)              │
+├──────────────────────────────────────────────┤
 │           AirTrafficDaemon                       │
 │  ┌─────────────┐  ┌────────────────────────┐  │
 │  │ ProjectMgr   │  │ SessionOrchestrator    │  │
@@ -389,6 +369,10 @@ src/
 │       ├── commands.ts        # Message parsing (control + project channels)
 │       ├── formatters.ts      # Block Kit formatting (help, menu, welcome)
 │       └── presence.ts        # Heartbeat manager
+│   └── discord/
+│       ├── discord-adapter.ts # Discord.js integration
+│       ├── formatters.ts      # Embed/component formatting
+│       └── markdown.ts        # Slack mrkdwn → Discord markdown
 ├── projects/
 │   ├── types.ts               # ProjectConfig, PermissionPolicy
 │   ├── project-manager.ts     # CRUD + validation

@@ -6,6 +6,7 @@ import { Readable } from 'node:stream';
 import { BaseMessagingAdapter } from '../adapter.js';
 import type {
   ChannelInfo,
+  Formatters,
   MessageContent,
   MessageRef,
   IncomingMessage,
@@ -22,6 +23,7 @@ import {
   isProjectChannel,
   extractProjectName,
 } from './commands.js';
+import * as slackFormatters from './formatters.js';
 import {
   formatPermissionRequest,
   formatQuestion,
@@ -31,6 +33,7 @@ import {
   formatMenu,
   formatWelcome,
 } from './formatters.js';
+import { markdownToMrkdwn } from './mrkdwn.js';
 import { classifyIntent } from '../intent.js';
 import { getLogger } from '../../utils/logger.js';
 
@@ -74,6 +77,11 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 
 export class SlackAdapter extends BaseMessagingAdapter {
   readonly machineName: string;
+  readonly formatters: Formatters = slackFormatters;
+
+  formatMarkdown(md: string): string {
+    return markdownToMrkdwn(md);
+  }
 
   private app: App | null = null;
   private botUserId: string | null = null;
@@ -113,9 +121,6 @@ export class SlackAdapter extends BaseMessagingAdapter {
     // Resolve bot user ID
     const authResult = await this.app.client.auth.test({ token: this.config.botToken });
     this.botUserId = (authResult.user_id as string) ?? null;
-
-    // Send startup welcome to all existing DM conversations
-    await this.broadcastStartupWelcome();
   }
 
   async disconnect(): Promise<void> {
@@ -126,14 +131,14 @@ export class SlackAdapter extends BaseMessagingAdapter {
   }
 
   /** Send a startup notice to the app's DM conversation. */
-  private async broadcastStartupWelcome(): Promise<void> {
+  async broadcastWelcome(latestVersion?: string): Promise<void> {
     const log = getLogger();
     try {
       const result = await this.client.conversations.list({ types: 'im', limit: 1 });
       const im = (result.channels ?? []).find((c) => c.id && !c.is_archived);
       if (!im?.id) return;
       this.seenDmUsers.add(im.user ?? '');
-      await this.sendMessage(im.id, formatWelcome(this.machineName, this.config.version));
+      await this.sendMessage(im.id, formatWelcome(this.machineName, this.config.version, latestVersion));
       log.info('Sent startup welcome to app DM');
     } catch (err) {
       log.warn('Failed to send startup welcome', { error: err });
@@ -144,6 +149,18 @@ export class SlackAdapter extends BaseMessagingAdapter {
 
   async createProjectChannel(machineName: string, projectName: string): Promise<ChannelInfo> {
     const name = this.projectChannelName(machineName, projectName);
+
+    // Reuse existing channel with the same name
+    try {
+      const listResult = await this.client.conversations.list({ types: 'public_channel', limit: 200 });
+      const existing = (listResult.channels ?? []).find((ch) => ch.name === name && !ch.is_archived);
+      if (existing?.id) {
+        return { id: existing.id, name: existing.name! };
+      }
+    } catch {
+      // Fall through to create
+    }
+
     const result = await this.client.conversations.create({ name, is_private: false });
     const channel = result.channel!;
     return { id: channel.id!, name: channel.name! };

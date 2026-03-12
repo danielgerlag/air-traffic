@@ -1,5 +1,6 @@
 import type {
   MessagingAdapter,
+  Formatters,
   ChannelInfo,
   MessageContent,
   MessageRef,
@@ -14,6 +15,8 @@ import type {
 
 export abstract class BaseMessagingAdapter implements MessagingAdapter {
   abstract readonly machineName: string;
+  abstract readonly formatters: Formatters;
+  abstract formatMarkdown(md: string): string;
 
   protected messageHandlers: MessageHandler[] = [];
   protected commandHandlers: CommandHandler[] = [];
@@ -50,6 +53,9 @@ export abstract class BaseMessagingAdapter implements MessagingAdapter {
   // Presence
   abstract reportPresence(): Promise<void>;
   abstract reportStatus(status: MachineStatus): Promise<void>;
+
+  // Welcome
+  abstract broadcastWelcome(latestVersion?: string): Promise<void>;
 
   // Machine registry
   abstract registerMachine(status: MachineStatus): Promise<void>;

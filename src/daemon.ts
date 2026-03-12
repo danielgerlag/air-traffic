@@ -10,7 +10,6 @@ import { ModelRegistry } from './copilot/model-registry.js';
 import { PresenceManager } from './messaging/slack/presence.js';
 import { extractProjectName } from './messaging/slack/commands.js';
 import { parseProjectChannelMessage } from './messaging/slack/commands.js';
-import { formatControlHelp, formatMachineStatus, formatMenu, formatProjectHelp, formatProjectStatusCard } from './messaging/slack/formatters.js';
 import { MODE_DESCRIPTIONS } from './projects/types.js';
 import type { CopilotMode } from './projects/types.js';
 import { WebServer } from './web/server.js';
@@ -29,6 +28,7 @@ export class AirTrafficDaemon {
   constructor(
     private readonly config: AirTrafficConfig,
     private readonly adapter: MessagingAdapter,
+    private readonly pkg: { name: string; version: string } = { name: 'air-traffic', version: '0.0.0' },
   ) {
     this.projectManager = new ProjectManager(
       config.airTraffic.projectsDir,
@@ -58,6 +58,22 @@ export class AirTrafficDaemon {
 
     this.adapter.onCommand((cmd) => this.handleCommand(cmd));
     this.adapter.onMessage((msg) => this.handleMessage(msg));
+
+    // Check for newer version (non-blocking) then send welcome
+    let latestVersion: string | undefined;
+    try {
+      const res = await fetch(`https://registry.npmjs.org/${this.pkg.name}/latest`, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = (await res.json()) as { version?: string };
+        if (data.version && data.version !== this.pkg.version) {
+          latestVersion = data.version;
+          log.warn(`A newer version of Air Traffic is available: v${data.version} (current: v${this.pkg.version}). Run: npm install -g ${this.pkg.name}`);
+        }
+      }
+    } catch {
+      // Ignore — network may be unavailable
+    }
+    await this.adapter.broadcastWelcome(latestVersion);
 
     // Start Console web server
     this.webServer = new WebServer({
@@ -140,10 +156,10 @@ export class AirTrafficDaemon {
           await this.postAvailableModels(cmd.channelId);
           break;
         case 'help':
-          await this.adapter.sendMessage(cmd.channelId, formatControlHelp(this.config.airTraffic.machineName));
+          await this.adapter.sendMessage(cmd.channelId, this.adapter.formatters.formatControlHelp(this.config.airTraffic.machineName));
           break;
         case 'menu':
-          await this.adapter.sendMessage(cmd.channelId, formatMenu(this.config.airTraffic.machineName));
+          await this.adapter.sendMessage(cmd.channelId, this.adapter.formatters.formatMenu(this.config.airTraffic.machineName));
           break;
         case 'machines':
           await this.postMachineStatus(cmd.channelId);
@@ -255,10 +271,11 @@ export class AirTrafficDaemon {
           await this.cmdLeaveSession(projectName, msg);
           break;
         case 'history':
-          await this.cmdHistory(projectName, msg);
+        case 'refresh':
+          await this.cmdRefresh(projectName, msg);
           break;
         case 'help':
-          await this.adapter.sendMessage(msg.channelId, formatProjectHelp(projectName));
+          await this.adapter.sendMessage(msg.channelId, this.adapter.formatters.formatProjectHelp(projectName));
           break;
         case 'switch_branch':
           await this.cmdSwitchBranch(projectName, args, msg);
@@ -360,7 +377,7 @@ export class AirTrafficDaemon {
   private async sendProjectStatusCard(project: import('./projects/types.js').ProjectConfig): Promise<void> {
     try {
       const branch = await this.getGitBranch(project.path);
-      const card = formatProjectStatusCard({
+      const card = this.adapter.formatters.formatProjectStatusCard({
         projectName: project.name,
         model: project.model,
         agent: project.agent,
@@ -783,9 +800,50 @@ export class AirTrafficDaemon {
     });
   }
 
-  private async cmdHistory(_projectName: string, msg: IncomingMessage): Promise<void> {
-    // History retrieval is a placeholder — session history is not persisted yet
-    await this.adapter.sendMessage(msg.channelId, { text: '_Session history not yet available._' });
+  private async cmdRefresh(projectName: string, msg: IncomingMessage): Promise<void> {
+    const session = this.orchestrator.getSession(projectName);
+    if (!session) {
+      await this.adapter.sendMessage(msg.channelId, { text: '⚠️ No active session for this project. Send a message to start one.' });
+      return;
+    }
+
+    const history = await session.getHistory();
+    if (history.length === 0) {
+      await this.adapter.sendMessage(msg.channelId, { text: '📜 Session has no conversation history yet.' });
+      return;
+    }
+
+    // Post the conversation turns to the channel
+    const MAX_TURNS = 20;
+    const recent = history.slice(-MAX_TURNS);
+    const header = history.length > MAX_TURNS
+      ? `📜 Session history (showing last ${MAX_TURNS} of ${history.length} turns):`
+      : `📜 Session history (${history.length} turns):`;
+
+    const lines: string[] = [header, ''];
+    for (const turn of recent) {
+      const icon = turn.role === 'user' ? '👤' : '🤖';
+      // Truncate very long messages for readability
+      const content = turn.content.length > 500
+        ? turn.content.slice(0, 500) + '…'
+        : turn.content;
+      lines.push(`${icon} ${this.adapter.formatMarkdown(content)}`);
+      lines.push('');
+    }
+
+    // Discord has a 2000 char limit, Slack 4000 — split if needed
+    const MAX_MSG_LEN = 3800;
+    let chunk = '';
+    for (const line of lines) {
+      if (chunk.length + line.length + 1 > MAX_MSG_LEN) {
+        await this.adapter.sendMessage(msg.channelId, { text: chunk });
+        chunk = '';
+      }
+      chunk += (chunk ? '\n' : '') + line;
+    }
+    if (chunk) {
+      await this.adapter.sendMessage(msg.channelId, { text: chunk });
+    }
   }
 
   private async cmdListSessions(channelId: string): Promise<void> {
@@ -1056,7 +1114,7 @@ export class AirTrafficDaemon {
       projects: this.orchestrator.getActiveProjectNames(),
       lastSeen: new Date(),
     };
-    const content = formatMachineStatus(this.config.airTraffic.machineName, status);
+    const content = this.adapter.formatters.formatMachineStatus(this.config.airTraffic.machineName, status);
     await this.adapter.sendMessage(channelId, content);
   }
 
@@ -1078,7 +1136,15 @@ export class AirTrafficDaemon {
 
   private async getOrCreateSession(projectName: string): Promise<AgentSession> {
     const existing = this.orchestrator.getSession(projectName);
-    if (existing) return existing;
+    if (existing) {
+      if (existing.isConnected()) return existing;
+
+      // Session exists but underlying CLI session is dead — clean up and recreate
+      getLogger().warn(`Session for "${projectName}" is disconnected, reattaching`);
+      try { await existing.disconnect(); } catch { /* best-effort */ }
+      this.orchestrator.removeSession(projectName);
+      if (this.sessionBridge) this.sessionBridge.unbridge(projectName);
+    }
 
     const project = await this.projectManager.getProject(projectName);
     const client = await this.orchestrator.ensureClient();

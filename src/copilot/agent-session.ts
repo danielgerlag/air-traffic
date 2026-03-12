@@ -7,7 +7,6 @@ import type { MessagingAdapter, MessageRef } from '../messaging/types.js';
 import type { ProjectConfig } from '../projects/types.js';
 import { MODE_PREFIXES } from '../projects/types.js';
 import { PermissionManager } from './permission-manager.js';
-import { markdownToMrkdwn } from '../messaging/slack/mrkdwn.js';
 import { getLogger } from '../utils/logger.js';
 
 /** File patterns that trigger automatic upload to the messaging channel. */
@@ -300,7 +299,7 @@ export class AgentSession {
             const description = this.activeSubAgent ?? 'sub-agent';
             if (result && this.currentThreadId) {
               const preview = result.length > 3000 ? result.slice(0, 3000) + '\n…(truncated)' : result;
-              const formatted = markdownToMrkdwn(preview);
+              const formatted = this.messaging.formatMarkdown(preview);
               await this.messaging.sendMessage(this.project.channelId, {
                 text: `🤖 *Sub-agent result* — _${description}_\n>>>${formatted}`,
               }).catch(() => {});
@@ -420,7 +419,7 @@ export class AgentSession {
    * through recent tool activity.
    */
   private updateAssistantStatus(): void {
-    if (!this.currentThreadId) return;
+    if (this.idle || !this.currentThreadId) return;
 
     // Primary status line
     let status = 'is thinking…';
@@ -479,7 +478,18 @@ export class AgentSession {
     const customAgents = await this.loadCustomAgents();
     const activeAgentPrompt = this.findActiveAgentPrompt(customAgents);
     const config = this.buildSessionConfig(undefined, customAgents, activeAgentPrompt);
-    this.session = await this.client.resumeSession(sessionId, config);
+
+    // Try to resume; if the session file is corrupted (e.g. unknown event types),
+    // fall back to creating a fresh session with the same ID.
+    let resumed = false;
+    try {
+      this.session = await this.client.resumeSession(sessionId, config);
+      resumed = true;
+    } catch (err) {
+      logger.warn(`Failed to resume session ${sessionId}, creating fresh session`, { error: err });
+      this.session = await this.client.createSession({ ...config, sessionId });
+    }
+
     this.setupEventListeners();
     this.currentThreadId = threadId;
     this.currentUserId = userId ?? null;
@@ -487,31 +497,34 @@ export class AgentSession {
 
     // Replay conversation history as a summary
     let summary = '';
-    try {
-      const messages = await this.session.getMessages();
-      const turns: string[] = [];
-      for (const msg of messages) {
-        if (msg.type === 'user.message') {
-          const text = msg.data?.content ?? '';
-          if (text) turns.push(`👤 ${text.slice(0, 200)}`);
-        } else if (msg.type === 'assistant.message') {
-          const text = msg.data?.content ?? '';
-          if (text) turns.push(`🤖 ${text.slice(0, 200)}`);
+    if (resumed) {
+      try {
+        const messages = await this.session.getMessages();
+        const turns: string[] = [];
+        for (const msg of messages) {
+          if (msg.type === 'user.message') {
+            const text = msg.data?.content ?? '';
+            if (text) turns.push(`👤 ${text.slice(0, 200)}`);
+          } else if (msg.type === 'assistant.message') {
+            const text = msg.data?.content ?? '';
+            if (text) turns.push(`🤖 ${text.slice(0, 200)}`);
+          }
         }
+        if (turns.length > 0) {
+          const recent = turns.slice(-10);
+          summary = `📜 *Session history* (${messages.length} events, showing last ${recent.length} turns):\n${recent.join('\n')}`;
+        } else {
+          summary = '📜 Session has no conversation history yet.';
+        }
+      } catch (err) {
+        logger.warn('Failed to retrieve session history', { error: err });
+        summary = '📜 Could not retrieve session history.';
       }
-      if (turns.length > 0) {
-        // Show last 10 turns max
-        const recent = turns.slice(-10);
-        summary = `📜 *Session history* (${messages.length} events, showing last ${recent.length} turns):\n${recent.join('\n')}`;
-      } else {
-        summary = '📜 Session has no conversation history yet.';
-      }
-    } catch (err) {
-      logger.warn('Failed to retrieve session history', { error: err });
-      summary = '📜 Could not retrieve session history.';
+    } else {
+      summary = '⚠️ Could not resume session history (file incompatible). Started a fresh session.';
     }
 
-    logger.info(`Resumed session ${sessionId} for project ${this.project.name}`);
+    logger.info(`${resumed ? 'Resumed' : 'Recreated'} session ${sessionId} for project ${this.project.name}`);
     return summary;
   }
 
@@ -597,6 +610,15 @@ export class AgentSession {
         .catch((err) => getLogger().error('Error handling session.idle', { error: err }));
     });
 
+    // Session error — clean up status so typing/topic don't get stuck
+    this.session.on('session.error', () => {
+      this.idle = true;
+      this.clearAssistantStatus();
+      this.setChannelTopic('Copilot idle');
+      this.stopDeltaFlush();
+      this.stopActivityFlush();
+    });
+
     // Full assistant message
     this.session.on('assistant.message', (event) => {
       this.events.emit('message', { content: event.data.content });
@@ -626,7 +648,26 @@ export class AgentSession {
     this.setChannelTopic('⚙️ Copilot working…');
 
     const modePrefix = MODE_PREFIXES[this.project.mode ?? 'normal'] ?? '';
-    await this.session!.send({ prompt: `${modePrefix}${prompt}` });
+    try {
+      await this.session!.send({ prompt: `${modePrefix}${prompt}` });
+    } catch (err) {
+      const log = getLogger();
+      log.warn(`Session send failed for project ${this.project.name}, reinitializing`, { error: err });
+
+      // Tear down the broken session and create a fresh one
+      try { await this.session?.disconnect(); } catch { /* best-effort */ }
+      this.session = null;
+      await this.initialize();
+
+      await this.messaging.sendMessage(this.project.channelId, {
+        text: '🔄 Session was disconnected — reconnected automatically. Retrying your prompt…',
+      });
+
+      // Reset state for the retry
+      this.idle = false;
+      this.updateAssistantStatus();
+      await this.session!.send({ prompt: `${modePrefix}${prompt}` });
+    }
   }
 
   async abort(): Promise<void> {
@@ -639,10 +680,12 @@ export class AgentSession {
   }
 
   async disconnect(): Promise<void> {
+    this.idle = true;
+    this.clearAssistantStatus();
     this.stopDeltaFlush();
     this.stopActivityFlush();
     if (this.session) {
-      await this.session.disconnect();
+      try { await this.session.disconnect(); } catch { /* best-effort */ }
       this.session = null;
     }
     this.events.removeAllListeners();
@@ -650,6 +693,11 @@ export class AgentSession {
 
   isIdle(): boolean {
     return this.idle;
+  }
+
+  /** Whether the underlying Copilot CLI session is alive. */
+  isConnected(): boolean {
+    return this.session !== null;
   }
 
   /** Update the in-memory project config (e.g. after a web API PATCH). */
@@ -748,7 +796,7 @@ export class AgentSession {
       this.accumulatedContent = this.accumulatedContent.slice(-MAX_MSG_LEN);
     }
 
-    const formatted = markdownToMrkdwn(this.accumulatedContent);
+    const formatted = this.messaging.formatMarkdown(this.accumulatedContent);
 
     try {
       if (this.lastDeltaMessageRef) {

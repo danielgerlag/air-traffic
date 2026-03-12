@@ -10,9 +10,9 @@ if (subcommand === 'init') {
 
 import { loadConfig } from './config.js';
 import { createLogger } from './utils/logger.js';
-import { SlackAdapter } from './messaging/slack/slack-adapter.js';
 import { AirTrafficDaemon } from './daemon.js';
 import { createRequire } from 'node:module';
+import type { MessagingAdapter } from './messaging/types.js';
 
 const require = createRequire(import.meta.url);
 const pkg = require('../package.json') as { name: string; version: string };
@@ -20,15 +20,31 @@ const pkg = require('../package.json') as { name: string; version: string };
 const config = loadConfig();
 const log = createLogger(config.airTraffic.logLevel, config.airTraffic.machineName);
 
-const adapter = new SlackAdapter({
-  botToken: config.slack.botToken,
-  appToken: config.slack.appToken,
-  signingSecret: config.slack.signingSecret,
-  machineName: config.airTraffic.machineName,
-  version: pkg.version,
-});
+let adapter: MessagingAdapter;
 
-const daemon = new AirTrafficDaemon(config, adapter);
+if (config.platform === 'discord') {
+  const { DiscordAdapter } = await import('./messaging/discord/discord-adapter.js');
+  adapter = new DiscordAdapter({
+    botToken: config.discord!.botToken,
+    guildId: config.discord!.guildId,
+    machineName: config.airTraffic.machineName,
+    version: pkg.version,
+    spinnerEmoji: config.discord!.spinnerEmoji,
+    permissionTimeoutMs: config.airTraffic.permissionTimeoutMs,
+    questionTimeoutMs: config.airTraffic.questionTimeoutMs,
+  });
+} else {
+  const { SlackAdapter } = await import('./messaging/slack/slack-adapter.js');
+  adapter = new SlackAdapter({
+    botToken: config.slack!.botToken,
+    appToken: config.slack!.appToken,
+    signingSecret: config.slack!.signingSecret,
+    machineName: config.airTraffic.machineName,
+    version: pkg.version,
+  });
+}
+
+const daemon = new AirTrafficDaemon(config, adapter, pkg);
 
 async function shutdown(signal: string): Promise<void> {
   log.info(`Received ${signal}, shutting down...`);
@@ -44,17 +60,4 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
 await daemon.start();
-log.info(`Air Traffic v${pkg.version} is ready — machine: ${config.airTraffic.machineName}`);
-
-// Check for newer version on npm (non-blocking)
-try {
-  const res = await fetch(`https://registry.npmjs.org/${pkg.name}/latest`, { signal: AbortSignal.timeout(5000) });
-  if (res.ok) {
-    const data = (await res.json()) as { version?: string };
-    if (data.version && data.version !== pkg.version) {
-      log.warn(`A newer version of Air Traffic is available: v${data.version} (current: v${pkg.version}). Run: npm install -g ${pkg.name}`);
-    }
-  }
-} catch {
-  // Ignore — network may be unavailable
-}
+log.info(`Air Traffic v${pkg.version} is ready — machine: ${config.airTraffic.machineName} — platform: ${config.platform}`);

@@ -1,4 +1,4 @@
-import type { MessageContent, MachineStatus } from '../types.js';
+import type { MessageContent, MachineStatus, ProjectStatusCardInfo } from '../types.js';
 
 const STATUS_EMOJI: Record<string, string> = {
   running: '⏳',
@@ -224,7 +224,7 @@ export function formatProjectHelp(projectName: string): MessageContent {
     '`!sessions` — List all Copilot CLI sessions',
     '`!join [session-id]` — Join a session (picker if omitted)',
     '`!leave` — Detach without killing the session',
-    '`!history` — Show session history',
+    '`!refresh` — Replay session history to this channel',
     '`!diff` — Show git diff',
     '',
     '*Config*',
@@ -292,22 +292,38 @@ export function formatMenu(machineName: string): MessageContent {
   };
 }
 
-export function formatWelcome(machineName: string, version?: string): MessageContent {
+export function formatWelcome(machineName: string, version?: string, latestVersion?: string): MessageContent {
   const versionTag = version ? ` (v${version})` : '';
-  const text = [
+  const lines = [
     `🛫 *Welcome to Air Traffic — ${machineName}!*${versionTag}`,
+  ];
+
+  if (latestVersion && version && latestVersion !== version) {
+    lines.push(`⚠️ *Update available:* v${latestVersion} — run \`npm install -g air-traffic\` to upgrade`);
+  }
+
+  lines.push(
     '',
     'I orchestrate GitHub Copilot on this machine. You can:',
     '• Type commands directly: `create my-app`, `status`, `list`',
     '• Use natural language: _"make a project called api-server"_',
-    '• Type `menu` for clickable options',
+    '• Or use the buttons below',
     '',
     'In project channels, send messages as Copilot prompts or use `!` commands (`!model`, `!abort`).',
-  ].join('\n');
+  );
+  const text = lines.join('\n');
+
+  // Re-use the menu action rows
+  const menu = formatMenu(machineName);
+  const menuBlocks = (menu.blocks ?? []).filter(
+    (b) => (b as Record<string, unknown>).type === 'actions',
+  );
+
   return {
     text,
     blocks: [
       { type: 'section', text: { type: 'mrkdwn', text } },
+      ...menuBlocks,
     ],
   };
 }
@@ -323,14 +339,6 @@ export function formatError(message: string): MessageContent {
       },
     ],
   };
-}
-
-export interface ProjectStatusCardInfo {
-  projectName: string;
-  model: string;
-  agent?: string;
-  mode?: string;
-  branch?: string;
 }
 
 export function formatProjectStatusCard(info: ProjectStatusCardInfo): MessageContent {

@@ -88,9 +88,37 @@ export interface MachineStatus {
 export type MessageHandler = (msg: IncomingMessage) => void | Promise<void>;
 export type CommandHandler = (cmd: IncomingCommand) => void | Promise<void>;
 
+/** Platform-specific formatting helpers. */
+export interface ProjectStatusCardInfo {
+  projectName: string;
+  model: string;
+  agent?: string;
+  mode?: string;
+  branch?: string;
+}
+
+export interface Formatters {
+  formatControlHelp(machineName: string): MessageContent;
+  formatProjectHelp(projectName: string): MessageContent;
+  formatMenu(machineName: string): MessageContent;
+  formatWelcome(machineName: string, version?: string, latestVersion?: string): MessageContent;
+  formatMachineStatus(machineName: string, status: MachineStatus): MessageContent;
+  formatProjectStatusCard(info: ProjectStatusCardInfo): MessageContent;
+  formatError(message: string): MessageContent;
+  formatUnknownCommand(input: string, suggestions: string[]): MessageContent;
+  formatProjectList(projects: Array<{ name: string; model: string; status: string }>): MessageContent;
+  formatDiff(diff: string): MessageContent;
+}
+
 // The core messaging adapter interface
 export interface MessagingAdapter {
   readonly machineName: string;
+
+  /** Platform-specific formatters for rich messages. */
+  readonly formatters: Formatters;
+
+  /** Convert standard markdown to platform-native format (e.g. mrkdwn for Slack). */
+  formatMarkdown(md: string): string;
 
   // Lifecycle
   connect(): Promise<void>;
@@ -123,6 +151,9 @@ export interface MessagingAdapter {
   // Presence
   reportPresence(): Promise<void>;
   reportStatus(status: MachineStatus): Promise<void>;
+
+  // Startup welcome (sent after version check)
+  broadcastWelcome(latestVersion?: string): Promise<void>;
 
   // Machine registry
   registerMachine(status: MachineStatus): Promise<void>;
