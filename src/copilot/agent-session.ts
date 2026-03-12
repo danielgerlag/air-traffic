@@ -596,6 +596,15 @@ export class AgentSession {
         .catch((err) => getLogger().error('Error handling session.idle', { error: err }));
     });
 
+    // Session error — clean up status so typing/topic don't get stuck
+    this.session.on('session.error', () => {
+      this.idle = true;
+      this.clearAssistantStatus();
+      this.setChannelTopic('Copilot idle');
+      this.stopDeltaFlush();
+      this.stopActivityFlush();
+    });
+
     // Full assistant message
     this.session.on('assistant.message', (event) => {
       this.events.emit('message', { content: event.data.content });
@@ -657,10 +666,12 @@ export class AgentSession {
   }
 
   async disconnect(): Promise<void> {
+    this.idle = true;
+    this.clearAssistantStatus();
     this.stopDeltaFlush();
     this.stopActivityFlush();
     if (this.session) {
-      await this.session.disconnect();
+      try { await this.session.disconnect(); } catch { /* best-effort */ }
       this.session = null;
     }
     this.events.removeAllListeners();

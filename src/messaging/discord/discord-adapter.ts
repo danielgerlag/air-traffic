@@ -128,6 +128,8 @@ export class DiscordAdapter extends BaseMessagingAdapter {
   // Channel topic throttle — Discord allows only 2 topic changes per 10 minutes
   private topicTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private lastTopicUpdate = new Map<string, number>(); // channelId → timestamp
+  private lastTopicValue = new Map<string, string>();   // channelId → last applied topic
+  private pendingTopic = new Map<string, string>();     // channelId → topic waiting to be applied
   private static readonly TOPIC_COOLDOWN_MS = 5 * 60 * 1000; // 5 min between updates (safe margin)
 
   private readonly config: DiscordAdapterConfig;
@@ -206,11 +208,21 @@ export class DiscordAdapter extends BaseMessagingAdapter {
     // Discord rate-limits topic changes to 2 per 10 minutes per channel.
     // We throttle: apply immediately if cooldown has passed, otherwise
     // schedule the latest value for when the cooldown expires.
+    // Skip entirely if the topic hasn't changed.
+
+    // Don't send if the topic is already what we want
+    if (this.lastTopicValue.get(channelId) === topic && !this.topicTimers.has(channelId)) {
+      return;
+    }
+
+    // Always record what we *want* the topic to be
+    this.pendingTopic.set(channelId, topic);
+
     const now = Date.now();
     const lastUpdate = this.lastTopicUpdate.get(channelId) ?? 0;
     const elapsed = now - lastUpdate;
 
-    // Cancel any pending scheduled update — we always want the latest topic
+    // Cancel any pending scheduled update — the new pending value supersedes it
     const existingTimer = this.topicTimers.get(channelId);
     if (existingTimer) {
       clearTimeout(existingTimer);
@@ -221,21 +233,29 @@ export class DiscordAdapter extends BaseMessagingAdapter {
       // Safe to update now
       await this.applyChannelTopic(channelId, topic);
     } else {
-      // Schedule for when cooldown expires
+      // Schedule for when cooldown expires — will apply whatever pendingTopic is at that time
       const delay = DiscordAdapter.TOPIC_COOLDOWN_MS - elapsed;
       const timer = setTimeout(() => {
         this.topicTimers.delete(channelId);
-        this.applyChannelTopic(channelId, topic).catch(() => {});
+        const latest = this.pendingTopic.get(channelId);
+        if (latest && latest !== this.lastTopicValue.get(channelId)) {
+          this.applyChannelTopic(channelId, latest).catch(() => {});
+        }
       }, delay);
       this.topicTimers.set(channelId, timer);
     }
   }
 
   private async applyChannelTopic(channelId: string, topic: string): Promise<void> {
-    const channel = await this.requireGuild().channels.fetch(channelId);
-    if (channel && channel.type === ChannelType.GuildText) {
-      await (channel as TextChannel).setTopic(topic);
-      this.lastTopicUpdate.set(channelId, Date.now());
+    try {
+      const channel = await this.requireGuild().channels.fetch(channelId);
+      if (channel && channel.type === ChannelType.GuildText) {
+        await (channel as TextChannel).setTopic(topic);
+        this.lastTopicUpdate.set(channelId, Date.now());
+        this.lastTopicValue.set(channelId, topic);
+      }
+    } catch (err) {
+      getLogger().debug('Failed to set channel topic', { channelId, topic, error: err });
     }
   }
 
@@ -404,7 +424,7 @@ export class DiscordAdapter extends BaseMessagingAdapter {
       // Discord has no API to stop typing — sending a message is the only way.
       try {
         const channel = await this.resolveTextChannel(channelId);
-        const cancel = await channel.send('\u200b'); // zero-width space
+        const cancel = await channel.send('_ _'); // minimal visible content Discord won't filter
         await cancel.delete();
       } catch {
         // Best-effort
