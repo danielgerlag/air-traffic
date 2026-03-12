@@ -91,7 +91,6 @@ export interface DiscordAdapterConfig {
 }
 
 const DEFAULT_TIMEOUT_MS = 120_000;
-const TYPING_INTERVAL_MS = 9_000; // Discord typing expires after 10s
 const EMBED_COLOR = 0x1e90ff;
 
 export class DiscordAdapter extends BaseMessagingAdapter {
@@ -118,9 +117,6 @@ export class DiscordAdapter extends BaseMessagingAdapter {
 
   // Track DM users who have already received a welcome message
   private seenDmUsers = new Set<string>();
-
-  // Typing indicator intervals per thread
-  private typingIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
   // Status messages per thread (for updating with spinner + status text)
   private statusMessages = new Map<string, string>(); // key → messageId
@@ -166,12 +162,6 @@ export class DiscordAdapter extends BaseMessagingAdapter {
   }
 
   async disconnect(): Promise<void> {
-    // Clear all typing intervals
-    for (const interval of this.typingIntervals.values()) {
-      clearInterval(interval);
-    }
-    this.typingIntervals.clear();
-
     for (const timer of this.topicTimers.values()) {
       clearTimeout(timer);
     }
@@ -207,37 +197,31 @@ export class DiscordAdapter extends BaseMessagingAdapter {
   async setChannelTopic(channelId: string, topic: string): Promise<void> {
     // Discord rate-limits topic changes to 2 per 10 minutes per channel.
     // We throttle: apply immediately if cooldown has passed, otherwise
-    // schedule the latest value for when the cooldown expires.
-    // Skip entirely if the topic hasn't changed.
-
-    // Don't send if the topic is already what we want
-    if (this.lastTopicValue.get(channelId) === topic && !this.topicTimers.has(channelId)) {
-      return;
-    }
+    // record the desired value and let an existing deferred timer apply it.
 
     // Always record what we *want* the topic to be
     this.pendingTopic.set(channelId, topic);
+
+    // If a timer is already scheduled, it will apply the latest pendingTopic — don't reschedule
+    if (this.topicTimers.has(channelId)) return;
+
+    // Don't send if the topic is already what we want
+    if (this.lastTopicValue.get(channelId) === topic) return;
 
     const now = Date.now();
     const lastUpdate = this.lastTopicUpdate.get(channelId) ?? 0;
     const elapsed = now - lastUpdate;
 
-    // Cancel any pending scheduled update — the new pending value supersedes it
-    const existingTimer = this.topicTimers.get(channelId);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-      this.topicTimers.delete(channelId);
-    }
-
     if (elapsed >= DiscordAdapter.TOPIC_COOLDOWN_MS) {
-      // Safe to update now
       await this.applyChannelTopic(channelId, topic);
+      this.pendingTopic.delete(channelId);
     } else {
       // Schedule for when cooldown expires — will apply whatever pendingTopic is at that time
       const delay = DiscordAdapter.TOPIC_COOLDOWN_MS - elapsed;
       const timer = setTimeout(() => {
         this.topicTimers.delete(channelId);
         const latest = this.pendingTopic.get(channelId);
+        this.pendingTopic.delete(channelId);
         if (latest && latest !== this.lastTopicValue.get(channelId)) {
           this.applyChannelTopic(channelId, latest).catch(() => {});
         }
@@ -390,22 +374,7 @@ export class DiscordAdapter extends BaseMessagingAdapter {
   async setThreadStatus(channelId: string, threadId: string, status: string, loadingMessages?: string[]): Promise<void> {
     const key = `${channelId}:${threadId}`;
 
-    // Clear existing typing interval for this key
-    const existing = this.typingIntervals.get(key);
-    if (existing) {
-      clearInterval(existing);
-      this.typingIntervals.delete(key);
-    }
-
     if (!status) {
-      // Also clear any intervals for this channelId (defensive)
-      for (const [k, interval] of this.typingIntervals) {
-        if (k.startsWith(`${channelId}:`)) {
-          clearInterval(interval);
-          this.typingIntervals.delete(k);
-        }
-      }
-
       // Delete any status messages for this channel
       for (const [k, msgId] of this.statusMessages) {
         if (k.startsWith(`${channelId}:`)) {
@@ -419,17 +388,6 @@ export class DiscordAdapter extends BaseMessagingAdapter {
           }
         }
       }
-
-      // Send and immediately delete a message to cancel the typing indicator.
-      // Discord has no API to stop typing — sending a message is the only way.
-      try {
-        const channel = await this.resolveTextChannel(channelId);
-        const cancel = await channel.send('_ _'); // minimal visible content Discord won't filter
-        await cancel.delete();
-      } catch {
-        // Best-effort
-      }
-
       return;
     }
 
@@ -455,18 +413,6 @@ export class DiscordAdapter extends BaseMessagingAdapter {
         const newMsg = await channel.send(text);
         this.statusMessages.set(key, newMsg.id);
       }
-
-      // Also keep typing indicator going
-      await channel.sendTyping();
-      const interval = setInterval(async () => {
-        try {
-          await channel.sendTyping();
-        } catch {
-          clearInterval(interval);
-          this.typingIntervals.delete(key);
-        }
-      }, TYPING_INTERVAL_MS);
-      this.typingIntervals.set(key, interval);
     } catch {
       // Non-critical
     }
