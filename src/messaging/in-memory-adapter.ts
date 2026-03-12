@@ -190,6 +190,10 @@ export class InMemoryMessagingAdapter extends BaseMessagingAdapter {
     this.reportedStatuses.push(status);
   }
 
+  async broadcastWelcome(_latestVersion?: string): Promise<void> {
+    // No-op for tests
+  }
+
   // --- Machine registry ---
 
   readonly registeredMachines: Map<string, MachineStatus> = new Map();

@@ -121,9 +121,6 @@ export class SlackAdapter extends BaseMessagingAdapter {
     // Resolve bot user ID
     const authResult = await this.app.client.auth.test({ token: this.config.botToken });
     this.botUserId = (authResult.user_id as string) ?? null;
-
-    // Send startup welcome to all existing DM conversations
-    await this.broadcastStartupWelcome();
   }
 
   async disconnect(): Promise<void> {
@@ -134,14 +131,14 @@ export class SlackAdapter extends BaseMessagingAdapter {
   }
 
   /** Send a startup notice to the app's DM conversation. */
-  private async broadcastStartupWelcome(): Promise<void> {
+  async broadcastWelcome(latestVersion?: string): Promise<void> {
     const log = getLogger();
     try {
       const result = await this.client.conversations.list({ types: 'im', limit: 1 });
       const im = (result.channels ?? []).find((c) => c.id && !c.is_archived);
       if (!im?.id) return;
       this.seenDmUsers.add(im.user ?? '');
-      await this.sendMessage(im.id, formatWelcome(this.machineName, this.config.version));
+      await this.sendMessage(im.id, formatWelcome(this.machineName, this.config.version, latestVersion));
       log.info('Sent startup welcome to app DM');
     } catch (err) {
       log.warn('Failed to send startup welcome', { error: err });

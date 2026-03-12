@@ -44,7 +44,7 @@ if (config.platform === 'discord') {
   });
 }
 
-const daemon = new AirTrafficDaemon(config, adapter);
+const daemon = new AirTrafficDaemon(config, adapter, pkg);
 
 async function shutdown(signal: string): Promise<void> {
   log.info(`Received ${signal}, shutting down...`);
@@ -61,16 +61,3 @@ process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
 await daemon.start();
 log.info(`Air Traffic v${pkg.version} is ready — machine: ${config.airTraffic.machineName} — platform: ${config.platform}`);
-
-// Check for newer version on npm (non-blocking)
-try {
-  const res = await fetch(`https://registry.npmjs.org/${pkg.name}/latest`, { signal: AbortSignal.timeout(5000) });
-  if (res.ok) {
-    const data = (await res.json()) as { version?: string };
-    if (data.version && data.version !== pkg.version) {
-      log.warn(`A newer version of Air Traffic is available: v${data.version} (current: v${pkg.version}). Run: npm install -g ${pkg.name}`);
-    }
-  }
-} catch {
-  // Ignore — network may be unavailable
-}

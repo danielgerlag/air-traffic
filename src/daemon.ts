@@ -28,6 +28,7 @@ export class AirTrafficDaemon {
   constructor(
     private readonly config: AirTrafficConfig,
     private readonly adapter: MessagingAdapter,
+    private readonly pkg: { name: string; version: string } = { name: 'air-traffic', version: '0.0.0' },
   ) {
     this.projectManager = new ProjectManager(
       config.airTraffic.projectsDir,
@@ -57,6 +58,22 @@ export class AirTrafficDaemon {
 
     this.adapter.onCommand((cmd) => this.handleCommand(cmd));
     this.adapter.onMessage((msg) => this.handleMessage(msg));
+
+    // Check for newer version (non-blocking) then send welcome
+    let latestVersion: string | undefined;
+    try {
+      const res = await fetch(`https://registry.npmjs.org/${this.pkg.name}/latest`, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = (await res.json()) as { version?: string };
+        if (data.version && data.version !== this.pkg.version) {
+          latestVersion = data.version;
+          log.warn(`A newer version of Air Traffic is available: v${data.version} (current: v${this.pkg.version}). Run: npm install -g ${this.pkg.name}`);
+        }
+      }
+    } catch {
+      // Ignore — network may be unavailable
+    }
+    await this.adapter.broadcastWelcome(latestVersion);
 
     // Start Console web server
     this.webServer = new WebServer({

@@ -266,25 +266,40 @@ export function formatMenu(machineName: string): MessageContent {
   };
 }
 
-export function formatWelcome(machineName: string, version?: string): MessageContent {
+export function formatWelcome(machineName: string, version?: string, latestVersion?: string): MessageContent {
   const versionTag = version ? ` (v${version})` : '';
-  const description = [
+  const descLines = [
     'I orchestrate GitHub Copilot on this machine. You can:',
     '- Type commands directly: `create my-app`, `status`, `list`',
     '- Use natural language: _"make a project called api-server"_',
-    '- Type `menu` for clickable options',
+    '- Or use the buttons below',
     '',
     'In project channels, send messages as Copilot prompts or use `!` commands (`!model`, `!abort`).',
-  ].join('\n');
+  ];
+
+  if (latestVersion && version && latestVersion !== version) {
+    descLines.push('', `⚠️ **Update available:** v${latestVersion} — run \`npm install -g air-traffic\` to upgrade`);
+  }
+
+  const description = descLines.join('\n');
+
+  // Re-use menu action rows
+  const menu = formatMenu(machineName);
+  const menuBlocks = (menu.blocks ?? []).filter(
+    (b) => (b as Record<string, unknown>).type === 'discord_action_row',
+  );
 
   return {
     text: `🛫 Welcome to Air Traffic — ${machineName}!${versionTag}\n${description}`,
-    blocks: [{
-      type: 'discord_embed',
-      title: `🛫 Welcome to Air Traffic — ${machineName}!${versionTag}`,
-      description,
-      color: EMBED_COLOR,
-    }],
+    blocks: [
+      {
+        type: 'discord_embed',
+        title: `🛫 Welcome to Air Traffic — ${machineName}!${versionTag}`,
+        description,
+        color: EMBED_COLOR,
+      },
+      ...menuBlocks,
+    ],
   };
 }
 

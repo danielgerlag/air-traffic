@@ -54,6 +54,9 @@ export abstract class BaseMessagingAdapter implements MessagingAdapter {
   abstract reportPresence(): Promise<void>;
   abstract reportStatus(status: MachineStatus): Promise<void>;
 
+  // Welcome
+  abstract broadcastWelcome(latestVersion?: string): Promise<void>;
+
   // Machine registry
   abstract registerMachine(status: MachineStatus): Promise<void>;
   abstract getRegisteredMachines(): Promise<MachineStatus[]>;

@@ -101,7 +101,7 @@ export interface Formatters {
   formatControlHelp(machineName: string): MessageContent;
   formatProjectHelp(projectName: string): MessageContent;
   formatMenu(machineName: string): MessageContent;
-  formatWelcome(machineName: string, version?: string): MessageContent;
+  formatWelcome(machineName: string, version?: string, latestVersion?: string): MessageContent;
   formatMachineStatus(machineName: string, status: MachineStatus): MessageContent;
   formatProjectStatusCard(info: ProjectStatusCardInfo): MessageContent;
   formatError(message: string): MessageContent;
@@ -151,6 +151,9 @@ export interface MessagingAdapter {
   // Presence
   reportPresence(): Promise<void>;
   reportStatus(status: MachineStatus): Promise<void>;
+
+  // Startup welcome (sent after version check)
+  broadcastWelcome(latestVersion?: string): Promise<void>;
 
   // Machine registry
   registerMachine(status: MachineStatus): Promise<void>;

@@ -156,9 +156,6 @@ export class DiscordAdapter extends BaseMessagingAdapter {
 
     // Ensure category exists
     await this.ensureCategory();
-
-    // Send startup welcome to DM
-    await this.broadcastStartupWelcome();
   }
 
   async disconnect(): Promise<void> {
@@ -590,17 +587,16 @@ export class DiscordAdapter extends BaseMessagingAdapter {
     return this.registryChannelId;
   }
 
-  private async broadcastStartupWelcome(): Promise<void> {
+  async broadcastWelcome(latestVersion?: string): Promise<void> {
     const log = getLogger();
     try {
-      // Find the bot's first DM channel (owner)
       if (!this.client?.user) return;
       const owner = await this.requireGuild().fetchOwner();
       if (!owner) return;
 
       const dm = await owner.createDM();
       this.seenDmUsers.add(owner.id);
-      await dm.send(this.buildSendOptions(formatWelcome(this.machineName, this.config.version)));
+      await dm.send(this.buildSendOptions(formatWelcome(this.machineName, this.config.version, latestVersion)) as Parameters<typeof dm.send>[0]);
       log.info('Sent startup welcome to guild owner DM');
     } catch (err) {
       log.warn('Failed to send startup welcome', { error: err });
