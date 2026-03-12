@@ -971,17 +971,30 @@ export class AirTrafficDaemon {
     // Determine or create the project
     let resolvedProjectName = projectName;
     if (!resolvedProjectName) {
-      // Try to match by CWD
-      if (targetSession.matchingProject) {
+      // 1. Try to extract project name from Air Traffic session ID (atc-<projectName>)
+      if (targetSession.sessionId.startsWith('atc-')) {
+        const candidate = targetSession.sessionId.slice(4);
+        try {
+          await this.projectManager.getProject(candidate);
+          resolvedProjectName = candidate;
+        } catch {
+          // No project with that name
+        }
+      }
+
+      // 2. Try to match by CWD against known projects
+      if (!resolvedProjectName && targetSession.matchingProject) {
         resolvedProjectName = targetSession.matchingProject;
-      } else {
-        // Derive a project name from the session's cwd or summary
+      }
+
+      // 3. Last resort — derive a name and create a new project
+      if (!resolvedProjectName) {
         const cwd = targetSession.context?.cwd;
         const dirName = cwd ? path.basename(cwd).toLowerCase().replace(/[^a-z0-9-]/g, '-') : null;
         resolvedProjectName = dirName && dirName.length > 0 ? dirName : `session-${targetSession.sessionId.slice(0, 8)}`;
 
         // Ensure name starts with a letter (project name validation)
-        if (resolvedProjectName && !/^[a-z]/.test(resolvedProjectName)) {
+        if (!/^[a-z]/.test(resolvedProjectName)) {
           resolvedProjectName = `p-${resolvedProjectName}`;
         }
 
