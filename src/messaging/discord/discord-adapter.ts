@@ -359,6 +359,17 @@ export class DiscordAdapter extends BaseMessagingAdapter {
           }
         }
       }
+
+      // Send and immediately delete a message to cancel the typing indicator.
+      // Discord has no API to stop typing — sending a message is the only way.
+      try {
+        const channel = await this.resolveTextChannel(channelId);
+        const cancel = await channel.send('\u200b'); // zero-width space
+        await cancel.delete();
+      } catch {
+        // Best-effort
+      }
+
       return;
     }
 
