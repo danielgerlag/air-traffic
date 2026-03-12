@@ -570,7 +570,9 @@ export class DiscordAdapter extends BaseMessagingAdapter {
     const guild = this.requireGuild();
     const categoryName = this.config.categoryName ?? 'Air Traffic';
 
-    // Search existing
+    // Fetch channels from API to ensure cache is populated
+    await guild.channels.fetch();
+
     const existing = guild.channels.cache.find(
       (c) => c.type === ChannelType.GuildCategory && c.name === categoryName,
     ) as CategoryChannel | undefined;
