@@ -125,6 +125,11 @@ export class DiscordAdapter extends BaseMessagingAdapter {
   // Status messages per thread (for updating with spinner + status text)
   private statusMessages = new Map<string, string>(); // key → messageId
 
+  // Channel topic throttle — Discord allows only 2 topic changes per 10 minutes
+  private topicTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private lastTopicUpdate = new Map<string, number>(); // channelId → timestamp
+  private static readonly TOPIC_COOLDOWN_MS = 5 * 60 * 1000; // 5 min between updates (safe margin)
+
   private readonly config: DiscordAdapterConfig;
 
   constructor(config: DiscordAdapterConfig) {
@@ -165,6 +170,11 @@ export class DiscordAdapter extends BaseMessagingAdapter {
     }
     this.typingIntervals.clear();
 
+    for (const timer of this.topicTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.topicTimers.clear();
+
     if (this.client) {
       this.client.destroy();
       this.client = null;
@@ -193,9 +203,39 @@ export class DiscordAdapter extends BaseMessagingAdapter {
   }
 
   async setChannelTopic(channelId: string, topic: string): Promise<void> {
+    // Discord rate-limits topic changes to 2 per 10 minutes per channel.
+    // We throttle: apply immediately if cooldown has passed, otherwise
+    // schedule the latest value for when the cooldown expires.
+    const now = Date.now();
+    const lastUpdate = this.lastTopicUpdate.get(channelId) ?? 0;
+    const elapsed = now - lastUpdate;
+
+    // Cancel any pending scheduled update — we always want the latest topic
+    const existingTimer = this.topicTimers.get(channelId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      this.topicTimers.delete(channelId);
+    }
+
+    if (elapsed >= DiscordAdapter.TOPIC_COOLDOWN_MS) {
+      // Safe to update now
+      await this.applyChannelTopic(channelId, topic);
+    } else {
+      // Schedule for when cooldown expires
+      const delay = DiscordAdapter.TOPIC_COOLDOWN_MS - elapsed;
+      const timer = setTimeout(() => {
+        this.topicTimers.delete(channelId);
+        this.applyChannelTopic(channelId, topic).catch(() => {});
+      }, delay);
+      this.topicTimers.set(channelId, timer);
+    }
+  }
+
+  private async applyChannelTopic(channelId: string, topic: string): Promise<void> {
     const channel = await this.requireGuild().channels.fetch(channelId);
     if (channel && channel.type === ChannelType.GuildText) {
       await (channel as TextChannel).setTopic(topic);
+      this.lastTopicUpdate.set(channelId, Date.now());
     }
   }
 
