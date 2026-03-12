@@ -195,7 +195,7 @@ export function formatProjectHelp(projectName: string): MessageContent {
     '`!sessions` — List all Copilot CLI sessions',
     '`!join [session-id]` — Join a session (picker if omitted)',
     '`!leave` — Detach without killing the session',
-    '`!history` — Show session history',
+    '`!refresh` — Replay session history to this channel',
     '`!diff` — Show git diff',
     '',
     '**Config**',

@@ -271,7 +271,8 @@ export class AirTrafficDaemon {
           await this.cmdLeaveSession(projectName, msg);
           break;
         case 'history':
-          await this.cmdHistory(projectName, msg);
+        case 'refresh':
+          await this.cmdRefresh(projectName, msg);
           break;
         case 'help':
           await this.adapter.sendMessage(msg.channelId, this.adapter.formatters.formatProjectHelp(projectName));
@@ -799,9 +800,50 @@ export class AirTrafficDaemon {
     });
   }
 
-  private async cmdHistory(_projectName: string, msg: IncomingMessage): Promise<void> {
-    // History retrieval is a placeholder — session history is not persisted yet
-    await this.adapter.sendMessage(msg.channelId, { text: '_Session history not yet available._' });
+  private async cmdRefresh(projectName: string, msg: IncomingMessage): Promise<void> {
+    const session = this.orchestrator.getSession(projectName);
+    if (!session) {
+      await this.adapter.sendMessage(msg.channelId, { text: '⚠️ No active session for this project. Send a message to start one.' });
+      return;
+    }
+
+    const history = await session.getHistory();
+    if (history.length === 0) {
+      await this.adapter.sendMessage(msg.channelId, { text: '📜 Session has no conversation history yet.' });
+      return;
+    }
+
+    // Post the conversation turns to the channel
+    const MAX_TURNS = 20;
+    const recent = history.slice(-MAX_TURNS);
+    const header = history.length > MAX_TURNS
+      ? `📜 Session history (showing last ${MAX_TURNS} of ${history.length} turns):`
+      : `📜 Session history (${history.length} turns):`;
+
+    const lines: string[] = [header, ''];
+    for (const turn of recent) {
+      const icon = turn.role === 'user' ? '👤' : '🤖';
+      // Truncate very long messages for readability
+      const content = turn.content.length > 500
+        ? turn.content.slice(0, 500) + '…'
+        : turn.content;
+      lines.push(`${icon} ${this.adapter.formatMarkdown(content)}`);
+      lines.push('');
+    }
+
+    // Discord has a 2000 char limit, Slack 4000 — split if needed
+    const MAX_MSG_LEN = 3800;
+    let chunk = '';
+    for (const line of lines) {
+      if (chunk.length + line.length + 1 > MAX_MSG_LEN) {
+        await this.adapter.sendMessage(msg.channelId, { text: chunk });
+        chunk = '';
+      }
+      chunk += (chunk ? '\n' : '') + line;
+    }
+    if (chunk) {
+      await this.adapter.sendMessage(msg.channelId, { text: chunk });
+    }
   }
 
   private async cmdListSessions(channelId: string): Promise<void> {
