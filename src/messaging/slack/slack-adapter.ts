@@ -149,6 +149,18 @@ export class SlackAdapter extends BaseMessagingAdapter {
 
   async createProjectChannel(machineName: string, projectName: string): Promise<ChannelInfo> {
     const name = this.projectChannelName(machineName, projectName);
+
+    // Reuse existing channel with the same name
+    try {
+      const listResult = await this.client.conversations.list({ types: 'public_channel', limit: 200 });
+      const existing = (listResult.channels ?? []).find((ch) => ch.name === name && !ch.is_archived);
+      if (existing?.id) {
+        return { id: existing.id, name: existing.name! };
+      }
+    } catch {
+      // Fall through to create
+    }
+
     const result = await this.client.conversations.create({ name, is_private: false });
     const channel = result.channel!;
     return { id: channel.id!, name: channel.name! };

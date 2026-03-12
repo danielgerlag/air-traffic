@@ -179,7 +179,17 @@ export class DiscordAdapter extends BaseMessagingAdapter {
 
   async createProjectChannel(machineName: string, projectName: string): Promise<ChannelInfo> {
     const name = this.projectChannelName(machineName, projectName);
-    const channel = await this.requireGuild().channels.create({
+
+    // Reuse existing channel with the same name under our category
+    const guild = this.requireGuild();
+    const existing = guild.channels.cache.find(
+      (ch) => ch.name === name && ch.type === ChannelType.GuildText && ch.parentId === this.category?.id,
+    );
+    if (existing) {
+      return { id: existing.id, name: existing.name };
+    }
+
+    const channel = await guild.channels.create({
       name,
       type: ChannelType.GuildText,
       parent: this.category ?? undefined,
