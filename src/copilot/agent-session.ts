@@ -478,7 +478,18 @@ export class AgentSession {
     const customAgents = await this.loadCustomAgents();
     const activeAgentPrompt = this.findActiveAgentPrompt(customAgents);
     const config = this.buildSessionConfig(undefined, customAgents, activeAgentPrompt);
-    this.session = await this.client.resumeSession(sessionId, config);
+
+    // Try to resume; if the session file is corrupted (e.g. unknown event types),
+    // fall back to creating a fresh session with the same ID.
+    let resumed = false;
+    try {
+      this.session = await this.client.resumeSession(sessionId, config);
+      resumed = true;
+    } catch (err) {
+      logger.warn(`Failed to resume session ${sessionId}, creating fresh session`, { error: err });
+      this.session = await this.client.createSession({ ...config, sessionId });
+    }
+
     this.setupEventListeners();
     this.currentThreadId = threadId;
     this.currentUserId = userId ?? null;
@@ -486,31 +497,34 @@ export class AgentSession {
 
     // Replay conversation history as a summary
     let summary = '';
-    try {
-      const messages = await this.session.getMessages();
-      const turns: string[] = [];
-      for (const msg of messages) {
-        if (msg.type === 'user.message') {
-          const text = msg.data?.content ?? '';
-          if (text) turns.push(`👤 ${text.slice(0, 200)}`);
-        } else if (msg.type === 'assistant.message') {
-          const text = msg.data?.content ?? '';
-          if (text) turns.push(`🤖 ${text.slice(0, 200)}`);
+    if (resumed) {
+      try {
+        const messages = await this.session.getMessages();
+        const turns: string[] = [];
+        for (const msg of messages) {
+          if (msg.type === 'user.message') {
+            const text = msg.data?.content ?? '';
+            if (text) turns.push(`👤 ${text.slice(0, 200)}`);
+          } else if (msg.type === 'assistant.message') {
+            const text = msg.data?.content ?? '';
+            if (text) turns.push(`🤖 ${text.slice(0, 200)}`);
+          }
         }
+        if (turns.length > 0) {
+          const recent = turns.slice(-10);
+          summary = `📜 *Session history* (${messages.length} events, showing last ${recent.length} turns):\n${recent.join('\n')}`;
+        } else {
+          summary = '📜 Session has no conversation history yet.';
+        }
+      } catch (err) {
+        logger.warn('Failed to retrieve session history', { error: err });
+        summary = '📜 Could not retrieve session history.';
       }
-      if (turns.length > 0) {
-        // Show last 10 turns max
-        const recent = turns.slice(-10);
-        summary = `📜 *Session history* (${messages.length} events, showing last ${recent.length} turns):\n${recent.join('\n')}`;
-      } else {
-        summary = '📜 Session has no conversation history yet.';
-      }
-    } catch (err) {
-      logger.warn('Failed to retrieve session history', { error: err });
-      summary = '📜 Could not retrieve session history.';
+    } else {
+      summary = '⚠️ Could not resume session history (file incompatible). Started a fresh session.';
     }
 
-    logger.info(`Resumed session ${sessionId} for project ${this.project.name}`);
+    logger.info(`${resumed ? 'Resumed' : 'Recreated'} session ${sessionId} for project ${this.project.name}`);
     return summary;
   }
 
